@@ -82,7 +82,7 @@ jobs:
           Set-Content "$env:RUNNER_TEMP/notes.md" $notes -Encoding utf8
 
       - name: Publish the release (draft)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         if: github.ref_type == 'tag' && steps.existing.outputs.exists != 'true'
         with:
           draft: true
