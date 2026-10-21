@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CaseKeeper's Microsoft Store (MSIX) package manifest.
+
+  This is a template: build-store.ps1 fills in the dollar-sign placeholders below and writes the
+  finished copy into the package. Don't edit the placeholders by hand. The identity values come from
+  packaging\store\store-identity.json, which you copy from Partner Center (see docs\STORE.md).
+
+  Privacy: nothing here names a person or a machine. The publisher is the "CN=..." value Partner
+  Center assigns to the developer account, and the display name is the brand.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:virtualization="http://schemas.microsoft.com/appx/manifest/virtualization/windows10"
+  IgnorableNamespaces="uap desktop6 rescap virtualization">
+
+  <Identity
+    Name="$IDENTITY_NAME$"
+    Publisher="$PUBLISHER$"
+    Version="$VERSION$"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>$DISPLAY_NAME$</DisplayName>
+    <PublisherDisplayName>$PUBLISHER_DISPLAY_NAME$</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Keeps family court documents, notes, a timeline and complaints together, encrypted on your own PC.</Description>
+
+    <!-- Keep the library out of Windows' per-app redirection. Without this, documents added from the
+         Store copy would be stored in a hidden per-package folder, invisible to the ordinary
+         installer's copy, and DELETED when the app is uninstalled. With it, the library lives in
+         %LOCALAPPDATA%\CaseKeeper exactly as it always has, and uninstalling never removes it.
+         Windows 10 uses the desktop6 line (all of AppData); Windows 11 uses the narrower list. -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+    <virtualization:FileSystemWriteVirtualization>
+      <virtualization:ExcludedDirectories>
+        <!-- The default library, its logs and its settings -->
+        <virtualization:ExcludedDirectory>$(KnownFolder:LocalAppData)\CaseKeeper</virtualization:ExcludedDirectory>
+        <!-- library-location.json and recent-libraries.json -->
+        <virtualization:ExcludedDirectory>$(KnownFolder:RoamingAppData)\CaseKeeper</virtualization:ExcludedDirectory>
+        <!-- Readable copies handed to other programs (open, share): they must be able to see them -->
+        <virtualization:ExcludedDirectory>$(KnownFolder:LocalAppData)\Temp\CaseKeeper-Share</virtualization:ExcludedDirectory>
+      </virtualization:ExcludedDirectories>
+    </virtualization:FileSystemWriteVirtualization>
+  </Properties>
+
+  <Dependencies>
+    <!-- Windows 10 2004 or newer: the oldest Windows 10 line that still gets updates is 22H2 (19045) -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-GB" />
+  </Resources>
+
+  <Applications>
+    <!-- The Id must match ApplicationId in CaseKeeper\Services\AppPackage.cs -->
+    <Application Id="CaseKeeper" Executable="CaseKeeper.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="$DISPLAY_NAME$"
+        Description="Family court document manager"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" ShortName="CaseKeeper" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- A normal desktop (WPF) program, not a sandboxed UWP app -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Needed for the FileSystemWriteVirtualization settings above. Partner Center asks why: see docs\STORE.md -->
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+</Package>

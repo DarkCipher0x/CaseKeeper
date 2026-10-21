@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem privately
+    url: https://darkciphersystems.com/report.html
+    about: Please don't post security issues publicly.
+  - name: Support and the CaseKeeper wiki
+    url: https://darkciphersystems.com/support.html
+    about: Help with using CaseKeeper.
+  - name: Legal advice
+    url: https://www.advicenow.org.uk
+    about: CaseKeeper can't give legal advice. Advicenow lists free help for people going to court.

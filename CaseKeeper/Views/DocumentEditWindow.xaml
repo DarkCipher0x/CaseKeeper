@@ -1,0 +1,62 @@
+﻿<Window x:Class="CaseKeeper.Views.DocumentEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource AppWindow}" Foreground="{DynamicResource TextBrush}" Title="Document details" Width="620" Height="760" MinHeight="500"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <DockPanel Margin="22">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Cancel" IsCancel="True" Padding="18,7"/>
+            <Button Style="{StaticResource PrimaryButton}" Content="Save" IsDefault="True" Click="Ok_Click" Padding="18,7" Margin="0"/>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,8,0">
+                <TextBlock Style="{StaticResource H1}" FontSize="20" Text="Document details"/>
+                <TextBlock Style="{StaticResource Label}" Text="TITLE"/>
+                <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" x:Name="TitleBox"/>
+                <TextBlock Style="{StaticResource Label}" Text="CATEGORY"/>
+                <ComboBox x:Name="CategoryBox" DisplayMemberPath="DisplayName" SelectedValuePath="Id"
+                          ToolTip="Type any word or a form code (e.g. C1A, FL401, Form E) to find a category"/>
+                <TextBlock Style="{StaticResource Muted}" FontSize="11.5" Margin="0,3,0,0" Text="Type to search – e.g. 'C100', 'section 7', 'police', 'bank'."/>
+                <TextBlock Style="{StaticResource Label}" Text="FILED BY / PARTY"/>
+                <ComboBox x:Name="PartyBox" DisplayMemberPath="DisplayName" SelectedValuePath="Id"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Label}" Text="DOCUMENT DATE (date on the document)"/>
+                        <DatePicker SelectedDate="{Binding DocumentDate}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource Label}" Text="DATE I RECEIVED IT"/>
+                        <DatePicker SelectedDate="{Binding DateReceived}"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock Style="{StaticResource Label}" Text="FROM / AUTHOR (e.g. Cafcass – Family Court Adviser name)"/>
+                <TextBox Text="{Binding Author}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Label}" Text="TAGS (separate with commas)"/>
+                        <TextBox Text="{Binding Tags}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource Label}" Text="EXHIBIT REF (e.g. AB1)"/>
+                        <TextBox Text="{Binding ExhibitRef}" ToolTip="The reference used for this document in your witness statement"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock Style="{StaticResource Label}" Text="SHORT SUMMARY (what the document is / says)"/>
+                <TextBox Text="{Binding Description}" Style="{StaticResource MultilineBox}" Height="80"/>
+                <TextBlock Style="{StaticResource Label}" Text="MY NOTES (context, concerns, inaccuracies to raise)"/>
+                <TextBox Text="{Binding Notes}" Style="{StaticResource MultilineBox}" Height="140"/>
+                <CheckBox IsChecked="{Binding IsImportant}" Content="Star this document as important" Margin="0,12,0,0"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

@@ -1,0 +1,275 @@
+# Publishing CaseKeeper in the Microsoft Store
+
+This guide covers everything from opening a developer account to a live Store listing. It sits
+alongside the website installer, which stays as it is (see [RELEASING.md](../RELEASING.md)).
+
+## How it works
+
+| | Website installer | Microsoft Store |
+|---|---|---|
+| File | `dist\CaseKeeper-Setup-v<version>.exe` (Inno Setup) | `dist\CaseKeeper-v<version>-x64.msix` |
+| Built by | `build-release.ps1` | `build-store.ps1` |
+| Signed by | Nobody yet, so SmartScreen warns ([below](#signing-the-website-installer)) | **Microsoft**, automatically, after certification |
+| Certificate cost | £0 unsigned; roughly $10 a month or £200–400 a year signed | **£0** |
+| Updates | People download the new installer | The Store updates it automatically |
+| Where the library lives | `%LOCALAPPDATA%\CaseKeeper` | **The same folder** |
+
+You don't buy a certificate for the Store. Microsoft re-signs every package it accepts with its own
+certificate, so people installing from the Store get no warnings at all. `build-store.ps1` still
+signs the package, with a free self-signed certificate. Windows only installs signed packages, and
+that signature is what lets you try the package on your own PC. The Store throws it away and
+replaces it.
+
+### What the package changes, and why
+
+The Store copy is the same program as the website copy, packaged differently. Three things were
+needed to make the package safe for people's documents:
+
+1. **The library is kept out of Windows' per-app redirection.** By default a packaged app's new
+   files in AppData go into a hidden per-package folder, and Windows **deletes that folder when the
+   app is uninstalled**. For a document manager that would mean uninstalling deletes someone's case.
+   The manifest (`packaging\store\AppxManifest.xml`) declares the `unvirtualizedResources`
+   capability and opts these folders out of redirection:
+   - `%LOCALAPPDATA%\CaseKeeper`
+   - `%APPDATA%\CaseKeeper`
+   - `%TEMP%\CaseKeeper-Share` (copies handed to other programs, which must be able to see them)
+
+   So the Store copy and the website copy share one library. Uninstalling either one leaves the
+   documents in place, just as the website installer always has.
+2. **Restarting goes through Windows.** Restoring a backup, a factory reset and turning encryption
+   on or off all restart the app. A Store copy has to restart through its Start-menu entry so it
+   keeps its package identity (`CaseKeeper\Services\AppPackage.cs`). The website copy restarts
+   exactly as before.
+3. **Windows 10 2004 or newer is required.** The setting in point 1 doesn't exist on older
+   versions, and every supported Windows 10 is newer than that anyway.
+
+Nothing else differs. Encryption, the database, text recognition and the optional Ollama AI all
+work the same way.
+
+### Privacy
+
+- The package contains only the program, the user guide and the patch notes.
+- `build-store.ps1` refuses to produce a package if any of CaseKeeper's own files contain this PC's
+  user folder, its name, or your git e-mail address.
+- The only names in the package are the brand ("DarkCipher Systems") and the publisher ID that
+  Partner Center gives you (a `CN=` code, not your name).
+- When you open the developer account, Microsoft checks your identity. Those details stay with
+  Microsoft. The Store shows only the **publisher display name** you choose, which should be
+  `DarkCipher Systems`.
+- The listing asks for a support contact. Use a brand e-mail address or the website's
+  report page, not a personal address.
+
+---
+
+## Step 1: Open a developer account (once)
+
+1. Go to <https://storedeveloper.microsoft.com> and sign in with the Microsoft account you want to
+   own the app. A brand account is better than a personal one.
+2. Choose **Individual** (no registration fee under the current onboarding) or **Company** (needs a
+   registered business that Microsoft verifies).
+3. For **Publisher display name**, enter `DarkCipher Systems`. This is the only name customers see.
+4. Complete the identity check. It can take a few days.
+
+## Step 2: Reserve the name and copy the identity (once)
+
+1. In [Partner Center](https://partner.microsoft.com/dashboard), go to **Apps and games → New
+   product → MSIX or PWA app** and reserve the name **CaseKeeper**. If someone already has it, try
+   something like *CaseKeeper – Court Documents*. Whatever you reserve is the name shown in the
+   Store.
+2. Open the product, then **Product management → Product identity**. Copy these three values:
+   - **Package/Identity/Name** (looks like `12345DarkCipherSystems.CaseKeeper`)
+   - **Package/Identity/Publisher** (looks like `CN=1A2B3C4D-…`)
+   - **Package/Properties/PublisherDisplayName** (`DarkCipher Systems`)
+3. Copy `packaging\store\store-identity.example.json` to `packaging\store\store-identity.json` and
+   paste the values in. They aren't secret, because they appear in every installed copy, but the
+   file is git-ignored anyway, so the account's identifiers stay out of the public repository.
+   Keep your own copy of it with your release files.
+
+> If you reserved a name other than "CaseKeeper", change the `$DISPLAY_NAME$` value near the end of
+> `build-store.ps1` (`Replace('$DISPLAY_NAME$', 'CaseKeeper')`) to match it exactly.
+
+## Step 3: Build the package
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build-store.ps1
+```
+
+This publishes the app, lays out the package, generates every tile and taskbar image size from
+`assets\casekeeper-icon.png`, runs the privacy check, packs `dist\CaseKeeper-v<version>-x64.msix`
+and signs it. At the end it prints the size and SHA-256.
+
+The packaging tools (MakeAppx, MakePri, SignTool) come from the Windows SDK. If the SDK isn't
+installed, add `-FetchTools`. That downloads Microsoft's `Microsoft.Windows.SDK.BuildTools`
+package from nuget.org (about 21 MB) into `obj\store\tools`, and installs nothing. If the tools are
+already in your NuGet cache, the script uses those. Add `-SkipBuild` to repackage the existing
+`publish\` folder without rebuilding.
+
+Without `store-identity.json`, the script builds a **TEST** package (`…-TEST.msix`) with a made-up
+identity. That's fine for trying the package out, but the Store rejects it.
+
+The first build creates a self-signed certificate named after the publisher in your personal
+certificate store (**Manage user certificates → Personal → Certificates**, friendly name *CaseKeeper
+package test signing*). Later builds reuse it. Its public half is saved as
+`dist\CaseKeeper-package-test.cer`. It's only used for local testing.
+
+## Step 4: Try the package before submitting it
+
+Windows only installs a package whose certificate it trusts. Pick **one** of these:
+
+**A. Developer Mode** (simplest, nothing to trust). Turn on **Settings → System → For developers →
+Developer Mode**, then in PowerShell:
+
+```powershell
+Add-AppxPackage -Register .\obj\store\layout\AppxManifest.xml
+```
+
+This installs straight from the build folder.
+
+**B. Trust the test certificate.** In an **administrator** PowerShell:
+
+```powershell
+Import-Certificate -FilePath .\dist\CaseKeeper-package-test.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+```
+
+Then double-click the `.msix`. Afterwards, remove the trust again in an administrator PowerShell:
+
+```powershell
+Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object Subject -eq 'CN=DarkCipher Systems Test' | Remove-Item
+```
+
+Use your real `CN=` publisher instead if you built with `store-identity.json`.
+
+**What to check.** The Store copy opens **your real library**, the same one the website copy uses.
+Back it up first (**Settings → Backup**), or test on a PC or Windows account that has no library.
+
+- [ ] It starts from the Start menu and shows the CaseKeeper icon in Start and on the taskbar.
+- [ ] Adding a document puts it in `%LOCALAPPDATA%\CaseKeeper\Files`, not under
+      `%LOCALAPPDATA%\Packages\…`.
+- [ ] **Open** and **Share** on a document work, so the other program can see the copy.
+- [ ] Turning encryption on or off restarts the app and it comes back.
+- [ ] The user guide and "What's new" open.
+- [ ] After uninstalling (**Settings → Apps**), `%LOCALAPPDATA%\CaseKeeper` is still there with
+      everything in it.
+
+To remove the test copy, uninstall it from **Settings → Apps → Installed apps**, or run:
+
+```powershell
+Get-AppxPackage *CaseKeeper* | Remove-AppxPackage
+```
+
+Neither touches the library. The website copy can stay installed alongside the Store copy, but
+don't run both at once. CaseKeeper already refuses to open a library that another copy has open.
+
+**Optional: the Windows App Certification Kit.** This runs the same automated tests the Store runs.
+It comes with the full Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`). Open
+*Windows App Cert Kit*, choose **Validate Store App**, and pick the `.msix`.
+
+## Step 5: Submit
+
+In Partner Center, open CaseKeeper and click **Start your submission**.
+
+**Pricing and availability**
+- Markets: **United Kingdom** is enough, because the forms and guidance are for England and Wales.
+  Add more if you like.
+- Price: **Free**, unless you've decided otherwise.
+
+**Properties**
+- Category: **Productivity**. Subcategory: none, or **Business** if offered.
+- Privacy policy URL: `https://darkciphersystems.com/privacy.html`. It's required, because the app
+  stores personal data. That page already covers CaseKeeper: no telemetry, data stays on the PC.
+- Website: `https://darkciphersystems.com/software.html`
+- Support contact: a brand e-mail address or `https://darkciphersystems.com/report.html`
+- System requirements: x64; about 300 MB of disk space plus the documents. Note that the optional
+  AI needs [Ollama](https://ollama.com), installed separately.
+
+**Age ratings.** Answer the questionnaire honestly. The app has no user-to-user communication, no
+purchases and no unrestricted web access. The *content* people store may involve sensitive family
+matters, but the app itself shows none.
+
+**Packages.** Upload `dist\CaseKeeper-v<version>-x64.msix`. The page should show
+*Windows 10 Desktop, x64, min. 10.0.19041.0*.
+
+**Store listing (English (United Kingdom))**
+- Description: start from the top of `README.md`. Say clearly that it is **not legal advice**.
+- What's new: paste the newest section of `CHANGELOG.md`.
+- Screenshots: at least one, ideally 4–6, at 1366×768 or larger. Use a **demo library with made-up
+  names**. Never use real case material. A ready set (a fictional case, 1586×933) is in
+  `assets\store-screenshots`. Don't use a Settings screenshot: it shows the PC's audit-trail code.
+- Logos: the Store uses the package icons unless you upload others. The optional ones are in
+  `assets\store-art`, drawn by `packaging\store\make-store-art.ps1` (run it again after changing the
+  icon). Each file is named after its Partner Center box: 9:16 poster art (720×1080), 1:1 box art
+  (1080×1080), 16:9 super hero art (1920×1080, no title, as Partner Center requires), and the
+  300×300, 150×150 and 71×71 app tile icons.
+- Keywords, for example: family court, C100, court bundle, documents, timeline, evidence,
+  encrypted.
+
+**Submission options → restricted capabilities.** Partner Center asks why the package uses
+`runFullTrust` and `unvirtualizedResources`. You can paste this:
+
+> CaseKeeper is a desktop (WPF) application packaged with the Desktop Bridge, so it requires
+> runFullTrust. It is a document manager for family court cases: people store their evidence,
+> notes and timelines in a library in %LOCALAPPDATA%\CaseKeeper, which can be encrypted. We use
+> unvirtualizedResources (with FileSystemWriteVirtualization exclusions limited to the app's own
+> %LOCALAPPDATA%\CaseKeeper, %APPDATA%\CaseKeeper and %TEMP%\CaseKeeper-Share folders) so that
+> this library is not deleted when the app is uninstalled or reinstalled. Losing it would destroy
+> users' legal evidence. It also lets users who installed the earlier non-Store version keep using
+> the same library, and lets other programs open the copies the user chooses to open or share. The
+> app writes nothing outside these folders except where the user chooses.
+
+**Notes for certification:**
+
+> No account or sign-in is needed. On first run CaseKeeper creates an empty local library. To test:
+> Documents → Add documents, choose any PDF or image. The AI features are optional and need a
+> local Ollama server (https://ollama.com); without one the app says the AI is unavailable and
+> everything else works. The app sends no data over the internet.
+
+Then **Submit for certification**. Certification usually takes from a few hours to three working
+days. Partner Center e-mails you the result, and a rejection report says exactly what to fix.
+
+## Every later release
+
+1. Bump the version in `CaseKeeper\CaseKeeper.csproj` and add the CHANGELOG entry, as in
+   [RELEASING.md](../RELEASING.md).
+2. Build both: `build-release.ps1` for the website installer and `build-store.ps1` for the Store.
+3. In Partner Center: **Update** the submission, replace the package, update *What's new*, submit.
+
+Each Store upload needs a version higher than the last one. The fourth part of the version is
+always `0`, as the Store requires. The Store updates installed copies automatically. CaseKeeper has
+no updater of its own, so nothing conflicts.
+
+## Signing the website installer
+
+This is separate from the Store, and optional. The Store copy needs none of it.
+
+The website installer is unsigned, so SmartScreen warns first-time downloaders. To sign it you need
+a real code-signing certificate:
+
+- **Azure Artifact Signing** (formerly Trusted Signing): about $9.99 a month, no hardware token,
+  and Microsoft's recommended option. Check eligibility first: it covers organisations in the UK
+  and EU, but individuals only in the USA and Canada.
+- **An OV certificate** from a certificate authority such as Sectigo or DigiCert: roughly £200–400
+  a year. Reputation with SmartScreen still builds up over time.
+
+Once you have one, the same certificate can also sign an `.msix` for direct download outside the
+Store:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build-store.ps1 -CertThumbprint <thumbprint>
+```
+
+For that, the certificate's subject must equal the publisher in `store-identity.json`. Use a
+separate identity file for website MSIX builds if they differ.
+
+Publishing in the Store is the free way to reach people with no warnings. It is also the reason
+this guide exists.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `MakeAppx.exe not found` | Run with `-FetchTools`, or install the Windows SDK. |
+| `Privacy check failed` | One of CaseKeeper's own files contains your user folder, PC name or e-mail. Find where it comes from (usually a path baked in by a build setting) and remove it. Don't ship around it. |
+| Partner Center: *"The package identity doesn't match"* | `store-identity.json` doesn't match **Product identity**. Copy the values again, exactly. |
+| Partner Center: *"Version must be higher"* | Bump `<Version>` in the csproj and rebuild. |
+| Double-clicking the `.msix` says the publisher isn't trusted | That's expected for a test build. See [Step 4](#step-4-try-the-package-before-submitting-it). |
+| The Store copy shows an empty library | The library was moved. *Settings → Your library* shows where; the pointer file in `%APPDATA%\CaseKeeper` is shared by both copies. If it is still empty on Windows 11, check `%LOCALAPPDATA%\Packages\<package>\LocalCache` for redirected files: that means the manifest's exclusions weren't applied. |

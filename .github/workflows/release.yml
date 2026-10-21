@@ -1,0 +1,104 @@
+# A cloud build of the full release package: the installer, a source zip and SHA256SUMS.txt.
+#
+# The release of record is built locally with build-release.ps1, which also publishes the sanitised
+# source here (tools\publish-public.ps1). That push creates the v<ver> tag, so this workflow is
+# deliberately NOT triggered by tags: a second, cloud-built installer would have different checksums
+# from the one on the website. Run it by hand from the Actions tab (choose the tag) when you want a
+# cloud build to compare with, or as a fallback. It creates a draft release only if none exists for
+# that tag, so a published release and its checksums are never touched.
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Check the tag matches the version in the project
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$p = Get-Content CaseKeeper\CaseKeeper.csproj
+          $version = ($p.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+          if ("${{ github.ref_type }}" -eq 'tag') {
+            $tag = "${{ github.ref_name }}".TrimStart('v')
+            if ($version -ne $tag) { throw "Tag v$tag does not match <Version>$version</Version> in the project file." }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "Version $version confirmed"
+
+      - name: Skip if this release already exists
+        id: existing
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" *> $null
+          $exists = $LASTEXITCODE -eq 0
+          "exists=$($exists.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if ($exists) { "Release ${{ github.ref_name }} already exists - nothing will be uploaded." }
+          $global:LASTEXITCODE = 0
+
+      - name: Run the tests
+        shell: pwsh
+        run: |
+          dotnet run --project tests/CaseKeeper.Tests.Docs -- "$env:RUNNER_TEMP/ck-test-output"
+          if ($LASTEXITCODE -ne 0) { throw "Document engine tests failed" }
+          dotnet run --project tests/CaseKeeper.Tests.Data
+          if ($LASTEXITCODE -ne 0) { throw "Data layer tests failed" }
+          dotnet run --project tests/CaseKeeper.Tests.BulkImport
+          if ($LASTEXITCODE -ne 0) { throw "Bulk Case Import tests failed" }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer, source zip and checksums
+        shell: pwsh
+        run: .\build-release.ps1 -NoPublish
+
+      - name: Release notes
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          # Just this version's section of the changelog, plus the checksums
+          $log = Get-Content CHANGELOG.md -Raw
+          $m = [regex]::Match($log, "(?ms)^## v$([regex]::Escape($v))\b.*?(?=^---|^## v|\z)")
+          $notes = if ($m.Success) { $m.Value.Trim() } else { "See CHANGELOG.md." }
+          $notes += "`n`n### SHA-256`n`n``````n" + (Get-Content dist/SHA256SUMS.txt -Raw) + "``````"
+          Set-Content "$env:RUNNER_TEMP/notes.md" $notes -Encoding utf8
+
+      - name: Publish the release (draft)
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag' && steps.existing.outputs.exists != 'true'
+        with:
+          draft: true
+          name: CaseKeeper ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/notes.md
+          files: |
+            dist/CaseKeeper-Setup-v${{ steps.version.outputs.version }}.exe
+            dist/CaseKeeper-src-v${{ steps.version.outputs.version }}.zip
+            dist/SHA256SUMS.txt
+
+      - name: Keep the build as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaseKeeper-v${{ steps.version.outputs.version }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          retention-days: 14

@@ -1,0 +1,13 @@
+# Weekly checks for outdated NuGet packages and GitHub Actions. Dependabot opens a pull request;
+# nothing is merged automatically.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /CaseKeeper
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

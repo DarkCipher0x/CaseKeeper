@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Windows 10 TFM gives access to Windows OCR, PDF rendering and the Share sheet -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyTitle>CaseKeeper</AssemblyTitle>
+    <Product>CaseKeeper - Family Court Document Manager</Product>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+
+    <!-- The single place the version is set. The installer script reads it from the built exe,
+         so bumping this number here is all that's needed for a new release. -->
+    <Version>0.4.0</Version>
+    <AssemblyVersion>0.4.0.0</AssemblyVersion>
+    <FileVersion>0.4.0.0</FileVersion>
+    <InformationalVersion>0.4.0</InformationalVersion>
+    <!-- Publisher brand only. No personal names, e-mail addresses or machine details anywhere in the build. -->
+    <Company>DarkCipher Systems</Company>
+    <Authors>DarkCipher Systems</Authors>
+    <Copyright>Copyright (c) 2026 DarkCipher Systems. Provided as-is, with no warranty. Not legal advice.</Copyright>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Runtime tuning: profile-guided JIT for faster warm paths, background GC so the UI never stalls -->
+    <TieredPGO>true</TieredPGO>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+
+    <!-- Ships with its own .NET runtime, so people installing it need nothing else -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- WPF uses reflection heavily; trimming it breaks things in ways that only show at runtime -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- Privacy: release builds carry no debug symbols (.pdb) and no local folder paths, so nothing
+         about the build machine or its user ends up inside the installer. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="PDFsharp-WPF" Version="6.1.1" />
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+    <!-- Replaces the stock SQLite engine with SQLCipher, so the database file itself can be
+         encrypted. Requires SQLitePCL.Batteries_V2.Init() at startup (see App.xaml.cs). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+    <Resource Include="logo.png" />
+    <!-- The user guide is built in, so the help assistant can look things up even without the file beside the exe -->
+    <EmbeddedResource Include="..\USER-GUIDE.md" LogicalName="USER-GUIDE.md" />
+  </ItemGroup>
+
+</Project>
+
+

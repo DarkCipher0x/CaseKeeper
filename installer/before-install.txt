@@ -1,0 +1,26 @@
+About CaseKeeper
+
+CaseKeeper helps you organise documents for family court proceedings in England & Wales.
+It keeps everything on this computer: documents, notes, your timeline and complaint records
+are stored locally and are never uploaded anywhere.
+
+Before you continue, please note:
+
+1. CaseKeeper is a filing and organising tool. It does not give legal advice, and nothing it
+   produces is a substitute for advice from a solicitor, barrister or advice service.
+
+2. Bundles it produces follow the general shape of Practice Direction 27A, but you are
+   responsible for checking that anything you file meets the directions your court has given.
+
+3. Documents and information from family proceedings about children are usually confidential.
+   Sharing them with people who are not parties can be contempt of court unless the Family
+   Procedure Rules allow it or the court gives permission. Check before you share.
+
+4. The built-in guide and the optional AI tools give general information only. AI output can be
+   wrong: always check it against your documents. The AI is off until you turn it on, and then
+   only talks to the Ollama server you choose (normally your own computer).
+
+5. The software is provided as-is, with no warranty. Please keep your own backups; CaseKeeper
+   has a built-in backup feature under Settings, and keeps daily restore points automatically.
+
+6. Upgrading over an existing installation keeps all of your existing data.

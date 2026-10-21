@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest something that would make CaseKeeper more useful
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Please keep examples generic. Don't include details of a real case.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task or problem, rather than the solution, e.g. "I need to show the court every missed handover in one list".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could CaseKeeper help?
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Who is it for?
+      options:
+        - A parent handling their own case (Simple mode)
+        - A professional or McKenzie friend (Professional mode)
+        - Both

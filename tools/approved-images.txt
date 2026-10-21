@@ -1,0 +1,19 @@
+# Images allowed into the public CaseKeeper source (DarkCipher0x/CaseKeeper on GitHub): SHA-256, the path, and what it shows.
+# Every image is looked at by eye before it ships: text scans can't see pixels. Add a line only after viewing the image;
+# tools\publish-public.ps1 refuses any image not listed here.
+a13c3926440836dd817df80fc0a4f58715ce2892f5c2945e49643af4bd276d63  CaseKeeper/app.ico  (viewed 2026-10-21: app icon: teal filing-drawer logo (all 9 frames))
+3717926f8bcdcc9b988522d54822f59e5945aa019ecd51fb7ea30cb6b5864a8b  CaseKeeper/logo.png  (viewed 2026-10-21: app logo: teal filing-drawer)
+3717926f8bcdcc9b988522d54822f59e5945aa019ecd51fb7ea30cb6b5864a8b  assets/casekeeper-icon.png  (viewed 2026-10-21: app logo: teal filing-drawer)
+a918c49dddde6bbf9c97ed9c79171ed6d45d118b6e8045e46cdb2cc0b3124153  assets/store-art/app-tile-icon-150x150.png  (viewed 2026-10-21: app logo, Store tile)
+926a38329bbcfd2360c44ebf7f066427990ac1e5927d094fc81567e141c9cf16  assets/store-art/app-tile-icon-300x300.png  (viewed 2026-10-21: app logo, Store tile)
+0f6dd1051784e93d029d6ff71875cc16d7f81af1348bc5bd0af69767d54ddec5  assets/store-art/app-tile-icon-71x71.png  (viewed 2026-10-21: app logo, Store tile)
+7642f2fd092109a9b9ac5ce5b30a29f78e22a19ed6ba65438a837473833c75aa  assets/store-art/box-art-1x1-1080x1080.png  (viewed 2026-10-21: logo, "CaseKeeper" and tagline)
+3082b833dc1407f2e5f23529dd0a88a273ce2ec0bd546b6aee6842506ffe52c0  assets/store-art/poster-art-9x16-720x1080.png  (viewed 2026-10-21: logo, "CaseKeeper" and tagline)
+85b1b3404dd15dad2397f38a60cee3ff2f0704e6aab1d6b0f0f508a1c3aa175c  assets/store-art/super-hero-art-16x9-1920x1080.png  (viewed 2026-10-21: logo on dark gradient, no text)
+f259aa2b524fd541254b3b49da82b96824f2a1e4e0fcb0f5325afeb38419f5d8  assets/store-screenshots/01-dashboard.png  (viewed 2026-10-21: app window, fictional demo case (Alex/Jordan Morgan))
+7fbf9694fa435209f9a0a494d40a3c4a794a9ecce9171d390aefec5601f8e2f0  assets/store-screenshots/02-documents.png  (viewed 2026-10-21: app window, fictional demo case)
+47b14421a2a564a201c34632061f6f2988af537d11d5e52e89f2f3e318a3a9a8  assets/store-screenshots/03-case-details.png  (viewed 2026-10-21: app window, fictional demo case (XX26P00417))
+43917e83c8cff4c4ed24969fbf543a2fdfb3273081d900a16a12d8feb0cf3193  assets/store-screenshots/04-timeline.png  (viewed 2026-10-21: app window, fictional demo case)
+35804db795b3aeabc84d7cbdeb90cf87c5a570ade52fa7ace9ce123a85480de3  assets/store-screenshots/05-directions-and-tasks.png  (viewed 2026-10-21: app window, fictional demo case)
+c10d27feb08a7731ec0e487e9b455571c4c0db5d7a32a6243052b84bdbf0c42f  assets/store-screenshots/06-contact-log.png  (viewed 2026-10-21: app window, fictional demo case)
+1f257ec5eb6815eeda44d58514ee4b4cd10934b8f37d757391f62aa8fb366f16  assets/store-screenshots/07-court-bundles.png  (viewed 2026-10-21: app window, fictional demo case)

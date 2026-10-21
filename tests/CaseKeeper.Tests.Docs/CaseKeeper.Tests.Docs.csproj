@@ -1,0 +1,26 @@
+<!-- Checks the document engine: formatting language, Word files against Microsoft's OpenXML validator,
+     Word-template filling and privacy scrubbing, PDF/HTML output, and UK deadline arithmetic.
+     How to run: see tests/README.md. Exit code 0 means everything passed. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <Src>$(MSBuildThisFileDirectory)..\..\CaseKeeper\</Src>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.0" />
+    <PackageReference Include="PDFsharp-WPF" Version="6.1.1" />
+    <Compile Include="$(Src)Services\Documents\DocModel.cs" />
+    <Compile Include="$(Src)Services\Documents\DocxDocWriter.cs" />
+    <Compile Include="$(Src)Services\Documents\HtmlDocWriter.cs" />
+    <Compile Include="$(Src)Services\Documents\PdfDocWriter.cs" />
+    <Compile Include="$(Src)Models\CaseRecords.cs" />
+    <Compile Include="$(Src)Services\Deadlines.cs" />
+    <Compile Include="$(Src)Services\Ai\HelpKnowledge.cs" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\USER-GUIDE.md" Link="USER-GUIDE.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

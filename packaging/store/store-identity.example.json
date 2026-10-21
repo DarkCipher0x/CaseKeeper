@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy this file to store-identity.json and fill in the three values from Partner Center: Apps and games > CaseKeeper > Product management > Product identity. They are public (they appear in every installed copy), not secrets.",
+  "IdentityName": "12345DarkCipherSystems.CaseKeeper",
+  "Publisher": "CN=00000000-0000-0000-0000-000000000000",
+  "PublisherDisplayName": "DarkCipher Systems"
+}

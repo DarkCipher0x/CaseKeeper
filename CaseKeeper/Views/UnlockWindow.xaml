@@ -1,0 +1,41 @@
+<Window x:Class="CaseKeeper.Views.UnlockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource AppWindow}" Foreground="{DynamicResource TextBrush}"
+        Title="CaseKeeper" Icon="/app.ico"
+        Width="480" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen">
+    <StackPanel Margin="32,28,32,26">
+        <StackPanel Orientation="Horizontal">
+            <Image Source="/logo.png" Width="46" Height="46" VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                <TextBlock Text="CaseKeeper" FontSize="21" FontWeight="Bold"/>
+                <TextBlock x:Name="SubtitleText" Text="This library is password protected" Style="{StaticResource Muted}"/>
+            </StackPanel>
+        </StackPanel>
+
+        <TextBlock Style="{StaticResource Label}" Text="PASSWORD" Margin="0,24,0,4"/>
+        <Grid>
+            <PasswordBox x:Name="PasswordBox" FontSize="15" Padding="10,8" KeyDown="Password_KeyDown"/>
+            <TextBox x:Name="PlainBox" FontSize="15" Padding="10,8" Visibility="Collapsed" KeyDown="Password_KeyDown"/>
+        </Grid>
+        <CheckBox x:Name="ShowPassword" Content="Show password" Margin="0,10,0,0"
+                  Checked="ShowPassword_Changed" Unchecked="ShowPassword_Changed"/>
+
+        <Border x:Name="ErrorPanel" Visibility="Collapsed" Margin="0,14,0,0" CornerRadius="6" Padding="12,9"
+                Background="{DynamicResource DangerSoft}" BorderBrush="{DynamicResource Danger}" BorderThickness="1">
+            <TextBlock x:Name="ErrorText" TextWrapping="Wrap" Foreground="{DynamicResource Danger}" FontWeight="SemiBold"/>
+        </Border>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button x:Name="QuitButton" Content="Quit" Click="Quit_Click" Padding="18,8"/>
+            <Button x:Name="UnlockButton" Style="{StaticResource PrimaryButton}" Content="Unlock"
+                    IsDefault="True" Click="Unlock_Click" Padding="24,8" Margin="0"/>
+        </StackPanel>
+
+        <Border Background="{DynamicResource SurfaceAlt}" CornerRadius="6" Padding="12,10" Margin="0,22,0,0">
+            <TextBlock Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
+                       Text="There is no way to recover this password. If it has been lost, the documents, notes and everything else in this library cannot be opened by anyone — restore from a backup instead."/>
+        </Border>
+    </StackPanel>
+</Window>

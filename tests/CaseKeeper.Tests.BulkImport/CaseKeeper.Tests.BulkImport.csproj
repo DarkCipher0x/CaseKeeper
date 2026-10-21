@@ -1,0 +1,46 @@
+<!-- Checks Bulk Case Import end to end against real temporary libraries and synthetic files (no real case data):
+     folder discovery (hidden items, links and loops, long paths, inaccessible files), importing (duplicates,
+     encryption, cancellation and resume, failures and rollback), text reading and OCR, the local-AI analysis with
+     a scripted stand-in for Ollama (bad JSON, timeouts, invented categories, chunking, version changes), date and
+     record extraction, cross-document checks, review decisions and undo, the audit trail, backups, and privacy.
+     How to run: see tests/README.md. Exit code 0 means everything passed. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <IsPackable>false</IsPackable>
+    <Src>$(MSBuildThisFileDirectory)..\..\CaseKeeper\</Src>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+    <PackageReference Include="PDFsharp-WPF" Version="6.1.1" />
+    <Compile Include="$(Src)Data\Database.cs" />
+    <Compile Include="$(Src)Data\Database.Records.cs" />
+    <Compile Include="$(Src)Data\Database.BulkImport.cs" />
+    <Compile Include="$(Src)Data\DefaultCategories.cs" />
+    <Compile Include="$(Src)Models\Models.cs" />
+    <Compile Include="$(Src)Models\CaseRecords.cs" />
+    <Compile Include="$(Src)Models\BulkImport.cs" />
+    <Compile Include="$(Src)UI\NaturalComparer.cs" />
+    <Compile Include="$(Src)Services\AppLog.cs" />
+    <Compile Include="$(Src)Services\Vault.cs" />
+    <Compile Include="$(Src)Services\LibraryService.cs" />
+    <Compile Include="$(Src)Services\LibraryLock.cs" />
+    <Compile Include="$(Src)Services\OcrService.cs" />
+    <Compile Include="$(Src)Services\PdfRenderService.cs" />
+    <Compile Include="$(Src)Services\Performance.cs" />
+    <Compile Include="$(Src)Services\Ai\AiHardware.cs" />
+    <Compile Include="$(Src)Services\Deadlines.cs" />
+    <Compile Include="$(Src)Services\HearingSync.cs" />
+    <Compile Include="$(Src)Services\BackupService.cs" />
+    <Compile Include="$(Src)Services\BulkImport\*.cs" />
+  </ItemGroup>
+</Project>

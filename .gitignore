@@ -1,0 +1,44 @@
+# Build output - never commit these. The publish folder is ~200 MB and the installer ~58 MB;
+# the installer belongs on a GitHub release, not in the repository.
+bin/
+obj/
+publish/
+dist/
+# The old pre-installer dev build (superseded by the installer; it contains build-machine paths)
+App/
+# Local source snapshots taken before big changes
+_archive/
+
+# Store identity (copy store-identity.example.json and fill it in from Partner Center) and
+# anything to do with signing: certificates and keys never go in the repository
+packaging/store/store-identity.json
+*.cer
+*.pfx
+*.p12
+*.pvk
+*.snk
+*.msix
+*.appx
+*.msixbundle
+
+# Private term list for the privacy scan (tools\write-public-source.ps1): never leaves this PC
+*.local.txt
+
+# Secrets and local settings
+.env
+.env.*
+*.secret.*
+.claude/
+.vscode/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+*.user
+*.suo
+
+# Local test libraries, logs, scratch
+*.log
+_before_restore_*/
+_restore/
+_import/
