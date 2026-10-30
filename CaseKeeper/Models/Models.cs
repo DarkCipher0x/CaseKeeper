@@ -1,3 +1,4 @@
+using System.IO;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -234,6 +235,35 @@ public static class FileKinds
     public static bool IsImage(string ext) => ImageExtensions.Contains(ext.ToLowerInvariant());
     public static bool IsText(string ext) => TextExtensions.Contains(ext.ToLowerInvariant());
     public static bool CanBundle(string ext) => ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase) || IsImage(ext);
+
+    /// <summary>
+    /// File types Windows would run rather than display. A document of one of these types is never
+    /// opened with a double-click from CaseKeeper: it is shown in File Explorer instead, so nothing
+    /// in a library (or in a backup someone else made) can start a program by being "opened".
+    /// </summary>
+    private static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".com", ".scr", ".pif", ".bat", ".cmd", ".ps1", ".psm1", ".psd1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
+        ".hta", ".msi", ".msp", ".mst", ".msix", ".msixbundle", ".appx", ".appxbundle", ".appinstaller", ".lnk", ".url",
+        ".cpl", ".dll", ".ocx", ".sys", ".drv", ".jar", ".reg", ".inf", ".scf", ".application", ".appref-ms",
+        ".settingcontent-ms", ".library-ms", ".search-ms", ".gadget", ".msc", ".diagcab", ".xll", ".chm", ".iso", ".img", ".vhd", ".vhdx"
+    };
+
+    public static bool IsRunnable(string pathOrExtension)
+    {
+        var ext = pathOrExtension?.StartsWith('.') == true ? pathOrExtension : Path.GetExtension(pathOrExtension ?? "");
+        return RunnableExtensions.Contains(ext ?? "");
+    }
+
+    /// <summary>
+    /// An extension safe to put on a file name: a dot, then up to 10 letters or digits. Anything else
+    /// (a path separator, a stray character from a damaged record) becomes no extension at all.
+    /// </summary>
+    public static string SafeExtension(string extOrName)
+    {
+        var ext = extOrName?.StartsWith('.') == true ? extOrName : Path.GetExtension(extOrName ?? "");
+        return !string.IsNullOrEmpty(ext) && ext.Length <= 11 && ext.Skip(1).All(char.IsAsciiLetterOrDigit) ? ext : "";
+    }
 }
 
 public class PageInfo : Observable

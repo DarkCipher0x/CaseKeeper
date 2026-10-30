@@ -49,6 +49,9 @@ public sealed class Vault
     /// <summary>OWASP's current guidance for PBKDF2-HMAC-SHA256. Costs about 50 ms to unlock.</summary>
     public const int DefaultIterations = 600_000;
 
+    /// <summary>Upper limit accepted from vault.json: about a minute of work, far beyond anything CaseKeeper writes.</summary>
+    private const int MaxIterations = 50_000_000;
+
     private Vault(string vaultPath, VaultFile file)
     {
         _vaultPath = vaultPath;
@@ -84,19 +87,43 @@ public sealed class Vault
     public bool TryUnlock(string password)
     {
         if (_file == null) return true;
+        // A vault.json edited to ask for billions of rounds would freeze the unlock screen
+        if (_file.Iterations < 1 || _file.Iterations > MaxIterations) return false;
+        byte[] wrappingKey = null;
         try
         {
-            var wrappingKey = DeriveKey(password, Convert.FromBase64String(_file.Salt), _file.Iterations);
+            wrappingKey = DeriveKey(password, Convert.FromBase64String(_file.Salt), _file.Iterations);
             var verifier = Decrypt(Convert.FromBase64String(_file.Verifier), wrappingKey);
             if (Encoding.UTF8.GetString(verifier) != VerifierText) return false;
-            _masterKey = Decrypt(Convert.FromBase64String(_file.WrappedKey), wrappingKey);
-            return _masterKey.Length == KeyBytes;
+            var key = Decrypt(Convert.FromBase64String(_file.WrappedKey), wrappingKey);
+            if (key.Length != KeyBytes)
+            {
+                CryptographicOperations.ZeroMemory(key);
+                return false;
+            }
+            if (_masterKey != null)
+            {
+                // Already unlocked (checking the current password before changing it). Keep the copy
+                // already in use: a background import or text scan may be holding it right now.
+                CryptographicOperations.ZeroMemory(key);
+                return true;
+            }
+            _masterKey = key;
+            return true;
         }
         catch (CryptographicException) { return false; }   // wrong password fails the GCM tag check
         catch (FormatException) { return false; }
+        finally { if (wrappingKey != null) CryptographicOperations.ZeroMemory(wrappingKey); }
     }
 
-    public void Lock() => _masterKey = null;
+    /// <summary>Forgets the key. The bytes are overwritten, not just dropped, so they don't linger in memory.</summary>
+    public void Lock() => ClearKey();
+
+    private void ClearKey()
+    {
+        if (_masterKey != null) CryptographicOperations.ZeroMemory(_masterKey);
+        _masterKey = null;
+    }
 
     // ------------------------------------------------------------------ setting up / changing
     /// <summary>Creates the key material for a newly protected library and unlocks it.</summary>
@@ -118,21 +145,25 @@ public sealed class Vault
     {
         if (File.Exists(_vaultPath)) File.Delete(_vaultPath);
         _file = null;
-        _masterKey = null;
+        ClearKey();
     }
 
     private void WriteVaultFile(string password, DateTime created)
     {
         var salt = RandomNumberGenerator.GetBytes(SaltBytes);
         var wrappingKey = DeriveKey(password, salt, DefaultIterations);
-        _file = new VaultFile
+        try
         {
-            Salt = Convert.ToBase64String(salt),
-            Iterations = DefaultIterations,
-            WrappedKey = Convert.ToBase64String(Encrypt(_masterKey, wrappingKey)),
-            Verifier = Convert.ToBase64String(Encrypt(Encoding.UTF8.GetBytes(VerifierText), wrappingKey)),
-            CreatedAt = created.ToString("o")
-        };
+            _file = new VaultFile
+            {
+                Salt = Convert.ToBase64String(salt),
+                Iterations = DefaultIterations,
+                WrappedKey = Convert.ToBase64String(Encrypt(_masterKey, wrappingKey)),
+                Verifier = Convert.ToBase64String(Encrypt(Encoding.UTF8.GetBytes(VerifierText), wrappingKey)),
+                CreatedAt = created.ToString("o")
+            };
+        }
+        finally { CryptographicOperations.ZeroMemory(wrappingKey); }
         // Write to a temporary file then swap, so a crash can't leave a half-written vault
         var temp = _vaultPath + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(_file, new JsonSerializerOptions { WriteIndented = true }));
@@ -140,9 +171,12 @@ public sealed class Vault
         File.Move(temp, _vaultPath);
     }
 
-    private static byte[] DeriveKey(string password, byte[] salt, int iterations) =>
-        Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password ?? ""), salt, iterations,
-            HashAlgorithmName.SHA256, KeyBytes);
+    private static byte[] DeriveKey(string password, byte[] salt, int iterations)
+    {
+        var secret = Encoding.UTF8.GetBytes(password ?? "");
+        try { return Rfc2898DeriveBytes.Pbkdf2(secret, salt, iterations, HashAlgorithmName.SHA256, KeyBytes); }
+        finally { CryptographicOperations.ZeroMemory(secret); }
+    }
 
     // ------------------------------------------------------------------ document files
     private byte[] RequireKey() =>

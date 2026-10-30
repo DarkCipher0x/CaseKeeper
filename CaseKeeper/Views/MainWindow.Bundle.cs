@@ -484,6 +484,44 @@ public partial class MainWindow
         }
     }
 
+    private void RemoveAllData_Click(object sender, RoutedEventArgs e)
+    {
+        if (_ocrRunning || _bulk?.IsRunning == true)
+        {
+            MessageBox.Show(this, "Please wait for text scanning or the bulk import to finish (or stop it) first.", "Remove all CaseKeeper data");
+            return;
+        }
+        if (DataRemoval.OtherCopyRunning())
+        {
+            MessageBox.Show(this, "Another copy of CaseKeeper is open on this PC. Close it first, then try again.",
+                "Remove all CaseKeeper data", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var plan = DataRemoval.Build();
+        var dlg = new RemoveAllDataWindow(plan, RunBackupAsync) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        // Every other window first: a document viewer saves its notes as it closes
+        foreach (var w in Application.Current.Windows.Cast<Window>().Where(w => w != this).ToList()) w.Close();
+        Db.Audit("data.removeAll", "library", null, "Removed all CaseKeeper data from this PC",
+            $"{plan.Libraries.Count} librar(y/ies), {plan.OtherFolders.Count} other folder(s)");
+        SessionGuard.Stop();
+        LibraryLock.Release();
+        SqliteConnection.ClearAllPools();
+        LibraryService.PurgeTempCopies();
+
+        var problems = DataRemoval.Execute(plan);
+        MessageBox.Show(this, problems.Count == 0
+                ? "All of CaseKeeper's data has been removed from this PC. CaseKeeper will now close." +
+                  (AppPackage.IsPackaged ? "\n\nTo remove the app as well: Start → right-click CaseKeeper → Uninstall." : "")
+                : "Most of CaseKeeper's data has been removed, but these couldn't be deleted (a file may be open in another program):\n\n" +
+                  string.Join("\n", problems.Take(15)) + "\n\nDelete them yourself once CaseKeeper has closed.",
+            "Remove all CaseKeeper data", MessageBoxButton.OK,
+            problems.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        Application.Current.Shutdown();
+    }
+
     // ================================================================== PASSWORD PROTECTION
     private void RefreshProtectionStatus()
     {

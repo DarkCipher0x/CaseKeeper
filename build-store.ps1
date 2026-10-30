@@ -202,7 +202,7 @@ if ($LASTEXITCODE -ne 0) { throw 'MakePri failed' }
 # --- privacy check: nothing about this PC or its user may end up in the package ----------------
 Write-Host 'Checking the package holds nothing personal...' -ForegroundColor Cyan
 $needles = @(
-    $env:USERPROFILE                        # C:\Users\<name>
+    $env:USERPROFILE                        # this user's profile folder
     "\Users\$env:USERNAME\"
     "/Users/$env:USERNAME/"
     $env:COMPUTERNAME

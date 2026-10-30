@@ -41,6 +41,13 @@ public static class SessionGuard
         Application.Current.Exit += (_, _) => SystemEvents.SessionSwitch -= OnSessionSwitch;
     }
 
+    /// <summary>Stops locking for good, for when the library is about to be deleted and the app closed.</summary>
+    public static void Stop()
+    {
+        _timer?.Stop();
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
+    }
+
     private static void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
     {
         if (e.Reason == SessionSwitchReason.SessionLock && LockWithWindows)

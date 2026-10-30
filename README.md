@@ -12,9 +12,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.0-3dd6c8" alt="Version 0.4.0">
+  <img src="https://img.shields.io/badge/version-0.4.2-3dd6c8" alt="Version 0.4.2">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b7a75" alt="Windows 10 | 11">
-  <img src="https://img.shields.io/badge/.NET-8-512bd4" alt=".NET 8">
+  <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-3dd6c8" alt="MIT licence"></a>
   <img src="https://img.shields.io/badge/storage-AES--256--GCM-0f172a" alt="Encrypted at rest">
 </p>
@@ -52,7 +52,7 @@ Both use the same library, so you can switch between them without losing anythin
 **Check your download.** Each release lists SHA-256 checksums in `SHA256SUMS.txt`. In PowerShell:
 
 ```powershell
-Get-FileHash .\CaseKeeper-Setup-v0.4.0.exe -Algorithm SHA256
+Get-FileHash .\CaseKeeper-Setup-v0.4.2.exe -Algorithm SHA256
 ```
 
 The result should match the line for that file exactly. If it doesn't, don't run it.
@@ -142,10 +142,12 @@ All names, numbers and documents shown are invented.
 
 ## Where your data lives
 
-By default `%LOCALAPPDATA%\CaseKeeper` – the database (`casekeeper.db`), copies of your imported files (`Files\`),
-daily snapshots (`Snapshots\`) and anything you export into the library (`Exports\`). Logs go to
-`%LOCALAPPDATA%\CaseKeeper\Logs`. This sits outside the program folder, which is why upgrading and uninstalling
-leave it alone. Move it elsewhere from *Settings → Your library*; when the library is password protected,
+By default `%LOCALAPPDATA%\CaseKeeper` for the website installer, or `%USERPROFILE%\CaseKeeper` for the Microsoft
+Store version – the database (`casekeeper.db`), copies of your imported files (`Files\`), daily snapshots
+(`Snapshots\`) and anything you export into the library (`Exports\`). Logs go to `%LOCALAPPDATA%\CaseKeeper\Logs`
+(the Store version keeps its logs and settings in its own app folder, which Windows removes on uninstall). The library
+sits outside the program folder, which is why upgrading and uninstalling leave it alone. To delete it, use
+*Settings → Factory reset → Remove all CaseKeeper data*, or say *Yes* when the website uninstaller asks. Move it elsewhere from *Settings → Your library*; when the library is password protected,
 `vault.json` there holds the (useless without your password) key material.
 
 Set the environment variable `CASEKEEPER_LIBRARY` to keep the library somewhere else, such as an encrypted drive.

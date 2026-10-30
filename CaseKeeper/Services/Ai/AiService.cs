@@ -201,10 +201,11 @@ public static class AiService
         var sb = new StringBuilder();
         await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token);
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        while (!reader.EndOfStream)
+        // ReadLineAsync returns null at the end; EndOfStream would block this thread on the network instead
+        string line;
+        while ((line = await reader.ReadLineAsync(cts.Token)) != null)
         {
             cts.Token.ThrowIfCancellationRequested();
-            var line = await reader.ReadLineAsync(cts.Token);
             if (string.IsNullOrWhiteSpace(line)) continue;
             JsonNode node;
             try { node = JsonNode.Parse(line); }

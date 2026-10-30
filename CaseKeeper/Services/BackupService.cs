@@ -106,6 +106,7 @@ public static class BackupService
         var staging = Path.Combine(lib.RootFolder, folderName);
         if (Directory.Exists(staging)) Directory.Delete(staging, true);
         Directory.CreateDirectory(staging);
+        var stagingRoot = Path.GetFullPath(staging).TrimEnd('\\') + "\\";
 
         try
         {
@@ -115,9 +116,11 @@ public static class BackupService
             {
                 if (!entry.IsFile) continue;
                 var name = entry.Name.Replace('\\', '/');
-                // Ignore any path trying to climb out of the staging folder
-                if (name.Contains("..") || Path.IsPathRooted(name)) continue;
-                var dest = Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar));
+                // Ignore any path trying to climb out of the staging folder, and anything a backup
+                // never contains (alternate data streams, drive-relative names)
+                if (name.Contains("..") || Path.IsPathRooted(name) || name.Contains(':')) continue;
+                var dest = Path.GetFullPath(Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar)));
+                if (!dest.StartsWith(stagingRoot, StringComparison.OrdinalIgnoreCase)) continue;
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 using var input = zf.GetInputStream(entry);
                 using var output = File.Create(dest);

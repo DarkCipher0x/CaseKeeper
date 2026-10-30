@@ -94,8 +94,19 @@ public static class SettingsTransfer
         if (profile?.App != "CaseKeeper") throw new InvalidDataException("That isn't a CaseKeeper settings file.");
 
         int settings = 0, heads = 0, templates = 0;
+        var keptAsTheyWere = new List<string>();
         foreach (var (k, v) in profile.Settings.Where(kv => IsTransferable(kv.Key)))
         {
+            // A settings file can come from someone else. It may not weaken this PC's protection or
+            // send case material anywhere new: those settings are only ever changed by hand.
+            if (k.StartsWith("security.", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("ai.allowRemote", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("remindConfidential", StringComparison.OrdinalIgnoreCase) ||
+                (k.Equals("ai.endpoint", StringComparison.OrdinalIgnoreCase) && AiService.CheckEndpoint(v, allowRemote: false) != null))
+            {
+                if (db.GetSetting(k, null) != v) keptAsTheyWere.Add(k);
+                continue;
+            }
             db.SetSetting(k, v);
             settings++;
         }
@@ -125,7 +136,17 @@ public static class SettingsTransfer
             templates++;
         }
         var summary = $"{settings} setting(s), {heads} letterhead(s) and {templates} template(s) imported.";
+        if (keptAsTheyWere.Count > 0)
+            summary += "\n\nFor your safety, these weren't changed (set them yourself in Settings if you want them):\n" +
+                       string.Join("\n", keptAsTheyWere.Select(k => "•  " + DescribeProtectedSetting(k)).Distinct());
         db.Audit("settings.import", "settings", null, "Imported a settings file", summary);
         return summary;
     }
+
+    private static string DescribeProtectedSetting(string key) => key switch
+    {
+        _ when key.StartsWith("security.", StringComparison.OrdinalIgnoreCase) => "screen-lock and security settings",
+        _ when key.Equals("remindConfidential", StringComparison.OrdinalIgnoreCase) => "the confidentiality reminder before sharing",
+        _ => "the AI server address (it pointed outside this PC and your home network)"
+    };
 }

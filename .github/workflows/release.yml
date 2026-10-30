@@ -20,12 +20,12 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Check the tag matches the version in the project
         id: version
@@ -53,20 +53,10 @@ jobs:
           if ($exists) { "Release ${{ github.ref_name }} already exists - nothing will be uploaded." }
           $global:LASTEXITCODE = 0
 
-      - name: Run the tests
-        shell: pwsh
-        run: |
-          dotnet run --project tests/CaseKeeper.Tests.Docs -- "$env:RUNNER_TEMP/ck-test-output"
-          if ($LASTEXITCODE -ne 0) { throw "Document engine tests failed" }
-          dotnet run --project tests/CaseKeeper.Tests.Data
-          if ($LASTEXITCODE -ne 0) { throw "Data layer tests failed" }
-          dotnet run --project tests/CaseKeeper.Tests.BulkImport
-          if ($LASTEXITCODE -ne 0) { throw "Bulk Case Import tests failed" }
-
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
-      - name: Build installer, source zip and checksums
+      - name: Test, then build installer, source zip and checksums
         shell: pwsh
         run: .\build-release.ps1 -NoPublish
 
@@ -78,27 +68,25 @@ jobs:
           $log = Get-Content CHANGELOG.md -Raw
           $m = [regex]::Match($log, "(?ms)^## v$([regex]::Escape($v))\b.*?(?=^---|^## v|\z)")
           $notes = if ($m.Success) { $m.Value.Trim() } else { "See CHANGELOG.md." }
-          $notes += "`n`n### SHA-256`n`n``````n" + (Get-Content dist/SHA256SUMS.txt -Raw) + "``````"
+          $notes += "`n`n### SHA-256`n`n``````n" + (Get-Content "dist/$v/SHA256SUMS.txt" -Raw) + "``````"
           Set-Content "$env:RUNNER_TEMP/notes.md" $notes -Encoding utf8
 
       - name: Publish the release (draft)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         if: github.ref_type == 'tag' && steps.existing.outputs.exists != 'true'
         with:
           draft: true
           name: CaseKeeper ${{ github.ref_name }}
           body_path: ${{ runner.temp }}/notes.md
           files: |
-            dist/CaseKeeper-Setup-v${{ steps.version.outputs.version }}.exe
-            dist/CaseKeeper-src-v${{ steps.version.outputs.version }}.zip
-            dist/SHA256SUMS.txt
+            dist/${{ steps.version.outputs.version }}/CaseKeeper-Setup-v${{ steps.version.outputs.version }}.exe
+            dist/${{ steps.version.outputs.version }}/CaseKeeper-src-v${{ steps.version.outputs.version }}.zip
+            dist/${{ steps.version.outputs.version }}/SHA256SUMS.txt
 
       - name: Keep the build as a workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CaseKeeper-v${{ steps.version.outputs.version }}
           path: |
-            dist/*.exe
-            dist/*.zip
-            dist/SHA256SUMS.txt
+            dist/${{ steps.version.outputs.version }}/
           retention-days: 14

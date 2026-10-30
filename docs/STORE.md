@@ -7,12 +7,14 @@ alongside the website installer, which stays as it is (see [RELEASING.md](../REL
 
 | | Website installer | Microsoft Store |
 |---|---|---|
-| File | `dist\CaseKeeper-Setup-v<version>.exe` (Inno Setup) | `dist\CaseKeeper-v<version>-x64.msix` |
+| File | `dist\<version>\CaseKeeper-Setup-v<version>.exe` (Inno Setup) | `dist\<version>\CaseKeeper-v<version>-x64.msix` |
 | Built by | `build-release.ps1` | `build-store.ps1` |
 | Signed by | Nobody yet, so SmartScreen warns ([below](#signing-the-website-installer)) | **Microsoft**, automatically, after certification |
 | Certificate cost | £0 unsigned; roughly $10 a month or £200–400 a year signed | **£0** |
 | Updates | People download the new installer | The Store updates it automatically |
-| Where the library lives | `%LOCALAPPDATA%\CaseKeeper` | **The same folder** |
+| Where the library lives | `%LOCALAPPDATA%\CaseKeeper` | `%USERPROFILE%\CaseKeeper` |
+| Settings and logs | `%APPDATA%\CaseKeeper`, `%LOCALAPPDATA%\CaseKeeper\Logs` | The package's own folder (Windows removes it on uninstall) |
+| Removing the library | The uninstaller asks (default: keep) | *Settings → Factory reset → Remove all CaseKeeper data* |
 
 You don't buy a certificate for the Store. Microsoft re-signs every package it accepts with its own
 certificate, so people installing from the Store get no warnings at all. `build-store.ps1` still
@@ -22,26 +24,39 @@ replaces it.
 
 ### What the package changes, and why
 
-The Store copy is the same program as the website copy, packaged differently. Three things were
-needed to make the package safe for people's documents:
+The Store copy is the same program as the website copy, packaged differently. The package asks for
+**no restricted capability except `runFullTrust`**, which every packaged desktop program needs.
 
-1. **The library is kept out of Windows' per-app redirection.** By default a packaged app's new
-   files in AppData go into a hidden per-package folder, and Windows **deletes that folder when the
-   app is uninstalled**. For a document manager that would mean uninstalling deletes someone's case.
-   The manifest (`packaging\store\AppxManifest.xml`) declares the `unvirtualizedResources`
-   capability and opts these folders out of redirection:
-   - `%LOCALAPPDATA%\CaseKeeper`
-   - `%APPDATA%\CaseKeeper`
-   - `%TEMP%\CaseKeeper-Share` (copies handed to other programs, which must be able to see them)
+1. **The library is kept outside AppData.** In a packaged app, new files under AppData go into a
+   hidden per-package folder that Windows **deletes when the app is uninstalled**. That is right
+   for settings and logs, so the Store copy keeps those in its own package folder and lets Windows
+   clean them up. It would be wrong for someone's case, so the Store copy's library lives in
+   `%USERPROFILE%\CaseKeeper`: an ordinary folder people can see and back up, which an uninstall or
+   reinstall never deletes. (Not Documents: OneDrive often syncs Documents to the cloud without
+   asking, and a live database in a syncing folder can be damaged.) `CaseKeeper\Services\AppPaths.cs`
+   holds all of this, and the Store copy refuses to move a library into AppData.
 
-   So the Store copy and the website copy share one library. Uninstalling either one leaves the
-   documents in place, just as the website installer always has.
-2. **Restarting goes through Windows.** Restoring a backup, a factory reset and turning encryption
+   CaseKeeper 0.4.0 used the `unvirtualizedResources` restricted capability to share
+   `%LOCALAPPDATA%\CaseKeeper` with the website copy. Microsoft declined it (policy 10.6.3): it's
+   meant for games and similar, and could stop an uninstall cleaning up. 0.4.1 removed it, and
+   0.4.2 is the version resubmitted.
+2. **Moving from the website copy.** The first time the Store copy opens on a PC with a website
+   library and no Store library, it offers to copy it across. Every file is checked by SHA-256
+   after copying, nothing is ever overwritten, and the original isn't changed, so the website copy
+   keeps working. A failed copy is taken back completely.
+3. **Removing data.** The Store copy has no uninstaller of its own. *Settings → Factory reset →
+   Remove all CaseKeeper data* deletes every local library CaseKeeper knows about plus its settings,
+   logs and temporary copies (`CaseKeeper\Services\DataRemoval.cs`). The website uninstaller runs
+   the same thing (`CaseKeeper.exe --remove-data`) when the person says yes.
+4. **Restarting goes through Windows.** Restoring a backup, a factory reset and turning encryption
    on or off all restart the app. A Store copy has to restart through its Start-menu entry so it
    keeps its package identity (`CaseKeeper\Services\AppPackage.cs`). The website copy restarts
    exactly as before.
-3. **Windows 10 2004 or newer is required.** The setting in point 1 doesn't exist on older
-   versions, and every supported Windows 10 is newer than that anyway.
+5. **Windows 10 2004 or newer is required.** Every supported Windows 10 is newer than that anyway.
+
+Temporary readable copies for **Open** and **Share** go to `%TEMP%\CaseKeeper-Share` in both copies.
+Windows doesn't redirect `%TEMP%` for packaged apps (checked on 30 October 2026 with a test package
+and no restricted capability), so other programs can open them.
 
 Nothing else differs. Encryption, the database, text recognition and the optional Ollama AI all
 work the same way.
@@ -139,17 +154,23 @@ Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object Subject -eq 'CN=Da
 
 Use your real `CN=` publisher instead if you built with `store-identity.json`.
 
-**What to check.** The Store copy opens **your real library**, the same one the website copy uses.
-Back it up first (**Settings → Backup**), or test on a PC or Windows account that has no library.
+**What to check.** The Store copy uses `%USERPROFILE%\CaseKeeper`. If a website library exists, it
+offers to copy it (the original is only read). To test from scratch, use a Windows account with no
+library.
 
 - [ ] It starts from the Start menu and shows the CaseKeeper icon in Start and on the taskbar.
-- [ ] Adding a document puts it in `%LOCALAPPDATA%\CaseKeeper\Files`, not under
+- [ ] With a website library present, the first start offers to copy it, and the copy opens with
+      everything in it.
+- [ ] Adding a document puts it in `%USERPROFILE%\CaseKeeper\Files`, not under
       `%LOCALAPPDATA%\Packages\…`.
 - [ ] **Open** and **Share** on a document work, so the other program can see the copy.
 - [ ] Turning encryption on or off restarts the app and it comes back.
 - [ ] The user guide and "What's new" open.
-- [ ] After uninstalling (**Settings → Apps**), `%LOCALAPPDATA%\CaseKeeper` is still there with
-      everything in it.
+- [ ] **Settings → Logs → Open log folder** opens the package's `LocalState\Logs` folder.
+- [ ] After uninstalling (**Settings → Apps**), `%USERPROFILE%\CaseKeeper` is still there with
+      everything in it, and `%LOCALAPPDATA%\Packages\<package>` has gone.
+- [ ] **Remove all CaseKeeper data** lists the library, deletes it after DELETE is typed, and
+      closes the app.
 
 To remove the test copy, uninstall it from **Settings → Apps → Installed apps**, or run:
 
@@ -157,8 +178,8 @@ To remove the test copy, uninstall it from **Settings → Apps → Installed app
 Get-AppxPackage *CaseKeeper* | Remove-AppxPackage
 ```
 
-Neither touches the library. The website copy can stay installed alongside the Store copy, but
-don't run both at once. CaseKeeper already refuses to open a library that another copy has open.
+Neither touches the library. The website copy can stay installed alongside the Store copy; each
+has its own library unless you point one at the other's (*Settings → Your library*).
 
 **Optional: the Windows App Certification Kit.** This runs the same automated tests the Store runs.
 It comes with the full Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`). Open
@@ -190,7 +211,12 @@ matters, but the app itself shows none.
 *Windows 10 Desktop, x64, min. 10.0.19041.0*.
 
 **Store listing (English (United Kingdom))**
-- Description: start from the top of `README.md`. Say clearly that it is **not legal advice**.
+- Description: start from the top of `README.md`. Say clearly that it is **not legal advice**. End
+  with where the data goes, for example:
+
+  > Your case library is kept on your PC in your user folder (%USERPROFILE%\CaseKeeper), never
+  > uploaded. Uninstalling keeps it, so reinstalling picks up where you left off. To delete it, use
+  > Settings → Factory reset → Remove all CaseKeeper data before uninstalling.
 - What's new: paste the newest section of `CHANGELOG.md`.
 - Screenshots: at least one, ideally 4–6, at 1366×768 or larger. Use a **demo library with made-up
   names**. Never use real case material. A ready set (a fictional case, 1586×933) is in
@@ -203,25 +229,26 @@ matters, but the app itself shows none.
 - Keywords, for example: family court, C100, court bundle, documents, timeline, evidence,
   encrypted.
 
-**Submission options → restricted capabilities.** Partner Center asks why the package uses
-`runFullTrust` and `unvirtualizedResources`. You can paste this:
+**Submission options → restricted capabilities.** The package declares only `runFullTrust`. If
+Partner Center asks why, you can paste this:
 
 > CaseKeeper is a desktop (WPF) application packaged with the Desktop Bridge, so it requires
-> runFullTrust. It is a document manager for family court cases: people store their evidence,
-> notes and timelines in a library in %LOCALAPPDATA%\CaseKeeper, which can be encrypted. We use
-> unvirtualizedResources (with FileSystemWriteVirtualization exclusions limited to the app's own
-> %LOCALAPPDATA%\CaseKeeper, %APPDATA%\CaseKeeper and %TEMP%\CaseKeeper-Share folders) so that
-> this library is not deleted when the app is uninstalled or reinstalled. Losing it would destroy
-> users' legal evidence. It also lets users who installed the earlier non-Store version keep using
-> the same library, and lets other programs open the copies the user chooses to open or share. The
-> app writes nothing outside these folders except where the user chooses.
+> runFullTrust. It declares no other restricted capability.
+
+If Partner Center still shows an old justification for `unvirtualizedResources` from an earlier
+submission, delete it: that capability is no longer in the package.
 
 **Notes for certification:**
 
-> No account or sign-in is needed. On first run CaseKeeper creates an empty local library. To test:
-> Documents → Add documents, choose any PDF or image. The AI features are optional and need a
-> local Ollama server (https://ollama.com); without one the app says the AI is unavailable and
-> everything else works. The app sends no data over the internet.
+> No account or sign-in is needed. On first run CaseKeeper creates an empty local library in
+> %USERPROFILE%\CaseKeeper. To test: Documents → Add documents, choose any PDF or image. The AI
+> features are optional and need a local Ollama server (https://ollama.com); without one the app
+> says the AI is unavailable and everything else works. The app sends no data over the internet.
+>
+> This version no longer uses the unvirtualizedResources capability. The user's library is kept in
+> %USERPROFILE%\CaseKeeper so that uninstalling never destroys their legal evidence. Users are told
+> this in the app (Settings → Factory reset) and in the user guide, and Settings → Factory reset →
+> "Remove all CaseKeeper data" deletes it, along with the app's settings, logs and temporary files.
 
 Then **Submit for certification**. Certification usually takes from a few hours to three working
 days. Partner Center e-mails you the result, and a rejection report says exactly what to fix.
@@ -230,7 +257,8 @@ days. Partner Center e-mails you the result, and a rejection report says exactly
 
 1. Bump the version in `CaseKeeper\CaseKeeper.csproj` and add the CHANGELOG entry, as in
    [RELEASING.md](../RELEASING.md).
-2. Build both: `build-release.ps1` for the website installer and `build-store.ps1` for the Store.
+2. Run `build-release.ps1`. It builds the website installer and the Store package from the same
+   build, into `dist\<version>\`.
 3. In Partner Center: **Update** the submission, replace the package, update *What's new*, submit.
 
 Each Store upload needs a version higher than the last one. The fourth part of the version is

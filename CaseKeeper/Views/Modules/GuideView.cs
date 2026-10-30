@@ -163,7 +163,13 @@ public class GuideView : UserControl
         _articleTitle.Text = a.Title;
         var doc = new DocModel { Title = a.Title, ShowTitle = false };
         doc.AddRange(Markup.Parse(a.Body));
-        _reader.Document = FlowDocBuilder.Build(doc, null);
+        var fd = FlowDocBuilder.Build(doc, null);
+        // An article is for reading, not a page preview: fit the pane instead of a fixed A4 width (which ran off the
+        // edge in a smaller window), but no wider than A4 so lines stay easy to read
+        fd.PageWidth = double.NaN;
+        fd.MaxPageWidth = 794;
+        fd.PagePadding = new Thickness(40, 32, 40, 32);
+        _reader.Document = fd;
     }
 
     private async Task ExplainAsync()

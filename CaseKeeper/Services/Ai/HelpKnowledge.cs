@@ -115,7 +115,7 @@ SETTINGS: jump buttons at the top (Layout, Security, Password, Library, Backup, 
  Logs & diagnostics (Detailed logging, Keep logs for, recent warnings and errors, Open log folder, Copy diagnostic summary).
  Categories (list, Add category…, Edit…, Delete…).
  Sharing & confidentiality (Remind me about this each time I share or export).
- About (version, What's new…, User guide…, Open library folder). Factory reset (red card at the bottom).
+ About (version, What's new…, User guide…, Open library folder). Factory reset (red card at the bottom), with 'Remove all CaseKeeper data…' under it: deletes every case library on this PC that CaseKeeper knows about plus its settings, logs and temporary copies, then closes (type DELETE to confirm). Uninstalling keeps the library; use this first to remove it. Website version library: %LOCALAPPDATA%\CaseKeeper. Microsoft Store version library: %USERPROFILE%\CaseKeeper.
 
 LINKS YOU CAN USE IN ANSWERS (they become buttons): (go:dashboard) (go:case) (go:hearings) (go:orders) (go:documents) (go:import) (go:bulkimport) (go:review) (go:search) (go:parties) (go:timeline) (go:actions) (go:contact) (go:complaints) (go:costs) (go:scott) (go:letters) (go:bundles) (go:ai) (go:exports) (go:guide) (go:audit) (go:settings)
 (settings:layout) (settings:security) (settings:password) (settings:library) (settings:backup) (settings:recovery) (settings:transfer) (settings:ai) (settings:performance) (settings:logs) (settings:categories) (settings:appearance) (settings:ocr)

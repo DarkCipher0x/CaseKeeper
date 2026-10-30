@@ -22,7 +22,7 @@ public sealed class LogEntry
 /// <summary>
 /// The app's diagnostic log: what went wrong, where, and when.
 ///
-/// Written to %LOCALAPPDATA%\CaseKeeper\Logs, one file per day, kept for a limited number of days.
+/// Written to %LOCALAPPDATA%\CaseKeeper\Logs (the Store copy uses its own package folder), one file per day, kept for a limited number of days.
 /// It deliberately records <i>what the program did</i>, never the contents of your case: no document
 /// text, no notes, and your Windows profile folder is replaced with %USERPROFILE% so a log can be
 /// shared for support without giving away who you are. Every error gets a short reference
@@ -35,10 +35,12 @@ public static class AppLog
     private const int RecentLimit = 600;
     private const long MaxFileBytes = 8 * 1024 * 1024;
 
-    public static string Folder { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CaseKeeper", "Logs");
+    public static string Folder { get; } = AppPaths.LogsFolder;
 
     public static LogLevel MinimumLevel { get; set; } = LogLevel.Info;
+
+    /// <summary>Set once all of CaseKeeper's data has been removed, so nothing writes the log folder back.</summary>
+    public static bool Disabled { get; set; }
     public static int RetentionDays { get; set; } = 30;
 
     /// <summary>Raised (on any thread) whenever an entry is written, for the in-app log viewer.</summary>
@@ -56,7 +58,7 @@ public static class AppLog
 
     private static string Write(LogLevel level, string area, string message, Exception ex)
     {
-        if (level < MinimumLevel) return "";
+        if (level < MinimumLevel || Disabled) return "";
         var id = level >= LogLevel.Error ? "E-" + Guid.NewGuid().ToString("N")[..6].ToUpperInvariant() : "";
         var entry = new LogEntry
         {

@@ -31,6 +31,7 @@ computer: documents, hearings and orders, deadlines, a contact log, costs, lette
 21. [Performance](#21-performance)
 22. [Keyboard shortcuts](#22-keyboard-shortcuts)
 23. [Troubleshooting](#23-troubleshooting)
+24. [Where your data is kept, and removing it](#24-where-your-data-is-kept-and-removing-it)
 
 ---
 
@@ -556,3 +557,37 @@ copies your set-up (no personal or case information) for a support request.
 | The library can't be reached at start-up | Connect the drive or NAS, then *Try again* – or choose another folder. |
 | "The folder's location is too long" | Choose a folder closer to the top of the drive, e.g. `C:\CaseKeeper`. |
 | Something looks wrong after a change | *Settings → Safety & recovery → Restore* a snapshot, or import a backup. |
+| CaseKeeper won't open a document and shows it in File Explorer instead | It's a type of file Windows would run as a program (for example `.exe`, `.js`, `.lnk`), so CaseKeeper won't start it. Check where it came from before opening it yourself. |
+
+## 24. Where your data is kept, and removing it
+
+Your case library is an ordinary folder on your PC:
+
+| Installed from | Library | Settings and logs |
+|---|---|---|
+| The website installer | `%LOCALAPPDATA%\CaseKeeper` | `%APPDATA%\CaseKeeper` and `%LOCALAPPDATA%\CaseKeeper\Logs` |
+| The Microsoft Store | `%USERPROFILE%\CaseKeeper` (a CaseKeeper folder inside your own user folder) | CaseKeeper's own app folder, which Windows manages |
+
+If you moved the library or keep other cases, *Settings → Your library* and *Settings → Settings, templates and other
+cases* show where each one is. *Settings → About → Open library folder* opens it.
+
+**Uninstalling keeps your library.** That's deliberate: reinstalling, or moving between the website and Store
+versions, picks up where you left off, and an uninstall can never destroy evidence by accident.
+
+**To remove everything:**
+
+- *Settings → Factory reset → Remove all CaseKeeper data…* deletes every case library on this PC that CaseKeeper
+  knows about, its settings, logs and temporary copies, then closes CaseKeeper. It lists exactly what will be deleted,
+  offers a backup first, and asks you to type DELETE. Libraries on network drives are left alone. Only CaseKeeper's own
+  files are removed from each folder, so anything else you keep there stays.
+- **Website version:** the uninstaller also asks whether to delete your library. Say *Yes* and the same
+  confirmation appears; say *No* (the default) to keep it.
+- **Store version:** use the Settings button above first, then *Start → right-click CaseKeeper → Uninstall*. Windows
+  removes the app, its settings and its logs.
+- **By hand:** close CaseKeeper and delete the library folder from the table above.
+
+Backups you saved elsewhere, and the original files you imported from, are never touched.
+
+**Moving from the website version to the Store version:** the first time the Store version opens, it offers to copy
+the website version's library across. The original is left as it was. You can also bring a library across with a
+backup (*Settings → Backup & transfer*).

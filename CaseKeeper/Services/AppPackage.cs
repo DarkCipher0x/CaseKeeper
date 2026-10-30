@@ -10,9 +10,7 @@ namespace CaseKeeper.Services;
 ///
 /// A Store copy runs with a "package identity". Starting its exe straight from the install folder
 /// would start it without that identity, so a Store copy restarts through its Start-menu entry
-/// instead. Both kinds keep the library in the same place (%LOCALAPPDATA%\CaseKeeper): the Store
-/// package opts that folder out of Windows' per-app redirection, so switching between the two
-/// installs, or uninstalling either, never loses or hides anyone's documents.
+/// instead. Where each kind keeps its library, settings and logs is in <see cref="AppPaths"/>.
 /// </summary>
 public static class AppPackage
 {

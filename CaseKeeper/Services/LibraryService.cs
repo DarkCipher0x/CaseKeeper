@@ -36,13 +36,12 @@ public class LibraryService
     public bool IsOnNetworkDrive => Database.IsNetworkPath(RootFolder);
 
     // ================================================================== where the library lives
-    private static string PointerFile => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CaseKeeper", "library-location.json");
+    public static string PointerFile => Path.Combine(AppPaths.SettingsFolder, "library-location.json");
 
     private sealed class LocationPointer { public string Path { get; set; } }
 
-    public static string DefaultRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CaseKeeper");
+    /// <summary>The default library folder (see <see cref="AppPaths"/> for why the Store copy differs).</summary>
+    public static string DefaultRoot => AppPaths.DefaultLibrary;
 
     /// <summary>
     /// Where the library should be opened from. An explicit CASEKEEPER_LIBRARY environment
@@ -58,11 +57,66 @@ public class LibraryService
             if (File.Exists(PointerFile))
             {
                 var saved = JsonSerializer.Deserialize<LocationPointer>(File.ReadAllText(PointerFile))?.Path;
-                if (!string.IsNullOrWhiteSpace(saved)) return saved;
+                if (!string.IsNullOrWhiteSpace(saved))
+                {
+                    if (AppPaths.PackagedLocationProblem(saved) == null) return saved;
+                    AppLog.Warn("Library", "Ignored a saved library location inside AppData (not safe for the Store version)");
+                }
             }
         }
         catch { /* unreadable pointer - fall back to the default */ }
         return DefaultRoot;
+    }
+
+    /// <summary>
+    /// The library the website version left in %LOCALAPPDATA%\CaseKeeper, when this is a Store copy
+    /// opening for the first time and could copy it across. Null otherwise.
+    /// </summary>
+    public static string FindWebsiteLibraryToCopy(string root)
+    {
+        if (!AppPackage.IsPackaged) return null;
+        if (!string.Equals(Path.GetFullPath(root).TrimEnd('\\'), Path.GetFullPath(DefaultRoot).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (File.Exists(Path.Combine(root, "casekeeper.db"))) return null;
+        var website = AppPaths.WebsiteDefaultLibrary;
+        return File.Exists(Path.Combine(website, "casekeeper.db")) ? website : null;
+    }
+
+    /// <summary>
+    /// Copies a whole library into an empty folder and checks every byte arrived. The source is only
+    /// read, never changed, so the website version keeps working with its own copy. Its logs and
+    /// "in use" marker are not copied.
+    /// </summary>
+    public static int CopyLibrary(string source, string destination, IProgress<string> progress)
+    {
+        source = Path.GetFullPath(source);
+        destination = Path.GetFullPath(destination);
+        var logs = Path.Combine(source, "Logs") + "\\";
+        var files = Directory.GetFiles(source, "*", SearchOption.AllDirectories)
+            .Where(f => !f.StartsWith(logs, StringComparison.OrdinalIgnoreCase) &&
+                        Path.GetFileName(f) != LibraryLock.FileName && !f.EndsWith(".tmp") && !f.EndsWith(".part"))
+            .ToList();
+        var copied = new List<string>();
+        try
+        {
+            foreach (var file in files)
+            {
+                var destFile = Path.Combine(destination, Path.GetRelativePath(source, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
+                File.Copy(file, destFile, false);       // never overwrites anything already there
+                copied.Add(destFile);
+                if (!HashesMatch(file, destFile))
+                    throw new IOException($"'{Path.GetRelativePath(source, file)}' did not copy correctly.");
+                if (copied.Count % 10 == 0 || copied.Count == files.Count) progress?.Report($"Copying… {copied.Count} of {files.Count} files");
+            }
+        }
+        catch
+        {
+            // Take back exactly what was copied, so a half-finished library is never opened
+            foreach (var f in copied) try { File.Delete(f); } catch { /* best effort */ }
+            throw;
+        }
+        return files.Count;
     }
 
     public static bool LocationIsFixedByEnvironment =>
@@ -83,6 +137,7 @@ public class LibraryService
         try { full = Path.GetFullPath(target); }
         catch { return "That doesn't look like a valid folder path."; }
 
+        if (AppPaths.PackagedLocationProblem(full) is { } packaged) return packaged;
         if (string.Equals(full.TrimEnd('\\'), Path.GetFullPath(currentRoot).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
             return "That's where the library already is.";
         if (full.StartsWith(Path.GetFullPath(currentRoot).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
@@ -189,8 +244,7 @@ public class LibraryService
     public static void UseExistingLibraryAt(string path) => SaveLocation(Path.GetFullPath(path));
 
     // ------------------------------------------------------------------ recent libraries (for people with several cases)
-    private static string RecentFile => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CaseKeeper", "recent-libraries.json");
+    public static string RecentFile => Path.Combine(AppPaths.SettingsFolder, "recent-libraries.json");
 
     /// <summary>Libraries opened on this PC, most recent first, for quick switching between cases.</summary>
     public static List<string> RecentLibraries()
@@ -250,6 +304,7 @@ public class LibraryService
         try { full = Path.GetFullPath(target); }
         catch { check.Problem = "That doesn't look like a valid folder path."; return check; }
 
+        if (AppPaths.PackagedLocationProblem(full) is { } packaged) { check.Problem = packaged; return check; }
         if (string.Equals(full.TrimEnd('\\'), Path.GetFullPath(currentRoot).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
         {
             check.Problem = "That's the library CaseKeeper is already using.";
@@ -293,7 +348,9 @@ public class LibraryService
     }
 
     // ================================================================== documents
-    public string GetFilePath(CaseDocument d) => Path.Combine(FilesFolder, d.StoredFileName);
+    // Only the bare file name is ever used, so a record restored from a tampered backup can't point
+    // outside the Files folder (and then be read, overwritten or deleted there)
+    public string GetFilePath(CaseDocument d) => Path.Combine(FilesFolder, Path.GetFileName(d.StoredFileName ?? ""));
 
     public static string ComputeHash(string path)
     {
@@ -357,9 +414,11 @@ public class LibraryService
     /// </summary>
     public string StoreImportedFile(string preferredName, byte[] plain)
     {
-        var name = preferredName;
-        if (string.IsNullOrWhiteSpace(name) || File.Exists(Path.Combine(FilesFolder, name)))
-            name = $"{Guid.NewGuid():N}{Path.GetExtension(preferredName)}";
+        // The name comes from the backup's database: keep only a plain file name inside Files
+        var name = Path.GetFileName(preferredName ?? "");
+        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+            File.Exists(Path.Combine(FilesFolder, name)))
+            name = $"{Guid.NewGuid():N}{FileKinds.SafeExtension(name)}";
         WriteStoredFile(name, plain);
         return name;
     }
@@ -657,7 +716,7 @@ public class LibraryService
         Directory.CreateDirectory(folder);
         var name = SafeFileName(d.Title);
         if (d.DocumentDate.HasValue) name = $"{d.DocumentDate:yyyy-MM-dd} {name}";
-        var dest = Path.Combine(folder, name + d.FileExtension);
+        var dest = Path.Combine(folder, name + FileKinds.SafeExtension(d.FileExtension));
         File.WriteAllBytes(dest, ReadDocumentBytes(d));
         return dest;
     }

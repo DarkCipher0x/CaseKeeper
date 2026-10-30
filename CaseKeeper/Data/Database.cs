@@ -147,8 +147,15 @@ public partial class Database
             if (File.Exists(leftover) && leftover == old) File.Delete(leftover);
     }
 
+    /// <summary>
+    /// Set once the library has been deleted (Remove all CaseKeeper data). From then on nothing may
+    /// open the database: SQLite would quietly create a new, empty one where the old one was.
+    /// </summary>
+    public static bool Retired { get; set; }
+
     private SqliteConnection Open()
     {
+        if (Retired) throw new InvalidOperationException("CaseKeeper's data has been removed from this PC.");
         var c = new SqliteConnection(_connectionString);
         c.Open();
         return c;
@@ -988,7 +995,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS SearchIndex USING fts5(content, doc_id UNINDE
             if (d.DeletedAt != null) continue;      // it was in the other library's Deleted items
             if (!string.IsNullOrEmpty(d.FileHash) && !haveHashes.Add(d.FileHash)) { result.DocumentsSkipped++; continue; }
 
-            var sourceFile = Path.Combine(otherFilesDir, d.StoredFileName);
+            // The bare file name only: a tampered backup must not be able to pull in files from elsewhere on the PC
+            var sourceFile = Path.Combine(otherFilesDir, Path.GetFileName(d.StoredFileName ?? ""));
             if (!File.Exists(sourceFile)) { result.FilesMissing++; continue; }
 
             var storedName = storeFile(d.StoredFileName, File.ReadAllBytes(sourceFile));

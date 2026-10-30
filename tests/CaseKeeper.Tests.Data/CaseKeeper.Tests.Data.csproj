@@ -4,7 +4,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
@@ -14,8 +14,8 @@
     <Src>$(MSBuildThisFileDirectory)..\..\CaseKeeper\</Src>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.14" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
     <Compile Include="$(Src)Data\Database.cs" />
     <Compile Include="$(Src)Data\Database.Records.cs" />
     <Compile Include="$(Src)Data\Database.BulkImport.cs" />
@@ -25,6 +25,8 @@
     <Compile Include="$(Src)Models\CaseRecords.cs" />
     <Compile Include="$(Src)UI\NaturalComparer.cs" />
     <Compile Include="$(Src)Services\AppLog.cs" />
+    <Compile Include="$(Src)Services\AppPaths.cs" />
+    <Compile Include="$(Src)Services\AppPackage.cs" />
     <Compile Include="$(Src)Services\Vault.cs" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <!-- Windows 10 TFM gives access to Windows OCR, PDF rendering and the Share sheet -->
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -14,10 +14,10 @@
 
     <!-- The single place the version is set. The installer script reads it from the built exe,
          so bumping this number here is all that's needed for a new release. -->
-    <Version>0.4.0</Version>
-    <AssemblyVersion>0.4.0.0</AssemblyVersion>
-    <FileVersion>0.4.0.0</FileVersion>
-    <InformationalVersion>0.4.0</InformationalVersion>
+    <Version>0.4.2</Version>
+    <AssemblyVersion>0.4.2.0</AssemblyVersion>
+    <FileVersion>0.4.2.0</FileVersion>
+    <InformationalVersion>0.4.2</InformationalVersion>
     <!-- Publisher brand only. No personal names, e-mail addresses or machine details anywhere in the build. -->
     <Company>DarkCipher Systems</Company>
     <Authors>DarkCipher Systems</Authors>
@@ -44,17 +44,26 @@
     <DebugSymbols>false</DebugSymbols>
     <Deterministic>true</Deterministic>
     <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
+
+    <!-- Supply chain: packages.lock.json pins every package, including indirect ones, to an exact
+         version and content hash. A changed or substituted package fails the restore. CI restores in
+         locked mode, so it can never quietly pick up something different from a local build. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.0" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
-    <PackageReference Include="PDFsharp-WPF" Version="6.1.1" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.14" />
+    <!-- 6.2.x is the last MIT release: PDFsharp 6.5 moved to AGPL-3.0 with a licence key, which CaseKeeper's
+         MIT licence can't carry. Don't upgrade past 6.2 without checking the licence. -->
+    <PackageReference Include="PDFsharp-WPF" Version="6.2.4" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
     <!-- Replaces the stock SQLite engine with SQLCipher, so the database file itself can be
          encrypted. Requires SQLitePCL.Batteries_V2.Init() at startup (see App.xaml.cs). -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
+    <!-- System.Security.Cryptography.ProtectedData and System.IO.Packaging are part of the .NET 10 Windows
+         Desktop runtime, so they are patched with it and need no package of their own. -->
   </ItemGroup>
 
   <ItemGroup>

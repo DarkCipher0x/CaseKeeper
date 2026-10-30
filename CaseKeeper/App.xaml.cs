@@ -27,6 +27,17 @@ public partial class App : Application
         };
 
         base.OnStartup(e);
+
+        // The website installer's uninstaller runs  CaseKeeper.exe --remove-data  when someone asks
+        // for their library to be deleted too. Nothing is opened: it only confirms and deletes.
+        if (e.Args.Any(a => a.Equals("--remove-data", StringComparison.OrdinalIgnoreCase)))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            ThemeManager.Apply(AppTheme.Dark);
+            Shutdown(RemoveDataForUninstaller());
+            return;
+        }
+
         AppLog.Info("App", $"CaseKeeper {Views.MainWindow.AppVersion} starting on Windows {Environment.OSVersion.Version}, " +
                            $"{Environment.ProcessorCount} cores");
         AppLog.Prune();
@@ -49,6 +60,7 @@ public partial class App : Application
             new MouseButtonEventHandler(OpenEditableComboOnClick));
 
         var root = LibraryService.ResolveRoot();
+        if (!OfferWebsiteLibrary(root)) { Shutdown(); return; }
         Vault vault;
         string problem;
         while (!TryReachLibrary(root, out vault, out problem))
@@ -128,6 +140,93 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         main.Show();
         SessionGuard.Start();
+    }
+
+    /// <summary>
+    /// The uninstaller's "delete my library too". Exit code 0 = deleted, 1 = cancelled or nothing
+    /// to delete, 2 = some of it couldn't be deleted. The uninstaller reports which.
+    /// </summary>
+    private static int RemoveDataForUninstaller()
+    {
+        const string title = "Remove all CaseKeeper data";
+        if (DataRemoval.OtherCopyRunning())
+        {
+            MessageBox.Show("CaseKeeper is still open. Nothing has been deleted.\n\nClose CaseKeeper, then use Settings → Factory reset → " +
+                            "Remove all CaseKeeper data, or delete the library folder yourself.", title,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return 1;
+        }
+        var plan = DataRemoval.Build();
+        if (plan.IsEmpty)
+        {
+            MessageBox.Show("CaseKeeper has no data on this PC to delete.", title, MessageBoxButton.OK, MessageBoxImage.Information);
+            return 1;
+        }
+        if (new Views.RemoveAllDataWindow(plan) { WindowStartupLocation = WindowStartupLocation.CenterScreen, ShowInTaskbar = true }
+                .ShowDialog() != true)
+            return 1;
+        LibraryService.PurgeTempCopies();
+        var problems = DataRemoval.Execute(plan);
+        if (problems.Count == 0) return 0;
+        MessageBox.Show("These couldn't be deleted (a file may be open in another program):\n\n" + string.Join("\n", problems.Take(15)) +
+                        "\n\nDelete them yourself.", title, MessageBoxButton.OK, MessageBoxImage.Warning);
+        return 2;
+    }
+
+    /// <summary>
+    /// First run of the Microsoft Store copy on a PC that already has a library from the website
+    /// version: offer to copy it into the Store copy's library folder. The website version's copy is
+    /// left exactly as it was, so either version can still be used.
+    /// </summary>
+    /// <returns>False when CaseKeeper should close instead of carrying on.</returns>
+    private static bool OfferWebsiteLibrary(string root)
+    {
+        var source = LibraryService.FindWebsiteLibraryToCopy(root);
+        if (source == null) return true;
+        if (MessageBox.Show("CaseKeeper found the library used by the version installed from the website:\n\n" + source +
+                            "\n\nThe Microsoft Store version keeps its library in a different folder:\n\n" + root +
+                            "\n\nCopy your existing library there now? Your documents, notes and settings come across exactly as they are, " +
+                            "and the original stays where it is.\n\nChoose No to start with an empty library instead. " +
+                            "(You can still bring the old one across later with a backup: Settings → Safety & recovery.)",
+                "CaseKeeper", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) != MessageBoxResult.Yes)
+            return true;
+        if (LibraryLock.FindOtherHolder(source) != null || DataRemoval.OtherCopyRunning())
+        {
+            MessageBox.Show("The website version of CaseKeeper seems to be open. Close it, then start CaseKeeper again to copy the library.",
+                "CaseKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        var busy = new Window
+        {
+            Title = "CaseKeeper", Width = 420, Height = 130, ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen, Style = (Style)Current.FindResource("AppWindow"),
+            Content = new TextBlock { Text = "Copying your library…", Margin = new Thickness(22), TextWrapping = TextWrapping.Wrap }
+        };
+        busy.SetResourceReference(Control.ForegroundProperty, "TextBrush");
+        var status = (TextBlock)busy.Content;
+        Exception failure = null;
+        int copied = 0;
+        busy.Loaded += async (_, _) =>
+        {
+            var progress = new Progress<string>(s => status.Text = s);
+            try { copied = await Task.Run(() => LibraryService.CopyLibrary(source, root, progress)); }
+            catch (Exception ex) { failure = ex; }
+            busy.Close();
+        };
+        busy.ShowDialog();
+
+        if (failure == null)
+        {
+            AppLog.Info("Library", $"Copied the website version's library into the Store library folder ({copied} files)");
+            return true;
+        }
+        var id = AppLog.Error("Library", "Copying the website version's library failed", failure);
+        // CopyLibrary has already taken back its partial copy; the original was only ever read
+        MessageBox.Show("The library could not be copied:\n\n" + failure.Message + $"\n\nNothing has been changed in the original. Reference: {id}" +
+                        "\n\nCaseKeeper will start with an empty library. You can bring the old one across later with a backup.",
+            "CaseKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+        return true;
     }
 
     /// <summary>Reads the settings that shape how the app behaves rather than what it shows.</summary>
@@ -231,6 +330,9 @@ public partial class App : Application
 
     private void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        // After "Remove all CaseKeeper data", anything still trying to reach the deleted library is
+        // expected to fail on the way out; there is nothing to report
+        if (Data.Database.Retired) { e.Handled = true; return; }
         var id = AppLog.Error("Crash", "Unhandled error in the window", e.Exception);
         MessageBox.Show("Something went wrong:\n\n" + e.Exception.Message +
                         $"\n\nYour data has not been lost. Reference: {id}\n(The details are in Settings → Logs & diagnostics.)",

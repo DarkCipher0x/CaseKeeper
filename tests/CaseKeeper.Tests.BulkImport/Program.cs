@@ -263,6 +263,7 @@ static class Program
         ReviewFixes();
         HardwareTiers();
         Security(logStart);
+        Hardening041();
 
         Console.WriteLine(failures == 0 ? $"ALL PASSED{(skipped > 0 ? $" ({skipped} skipped – see SKIP lines)" : "")}" : $"{failures} FAILURE(S)");
         SqliteConnection.ClearAllPools();
@@ -1417,5 +1418,149 @@ INSERT INTO Documents(Title,CategoryId,FileHash,FileExtension,ImportedAt,OcrStat
         var up2 = new Database(oldDb);      // opening twice: the migration is idempotent
         Check(up2.GetDocuments().Single().Title == "Kept from 0.3.0" && up2.GetDocuments().Single().SourcePath == "" && up.Query<ImportJob>("").Count == 0,
             "upgrade: a v0.3.0 library gains the bulk-import tables and columns without losing anything (safe to run twice)");
+    }
+
+    /// <summary>v0.4.1: tampered backups, runnable files, settings files, the vault, and Remove all CaseKeeper data.</summary>
+    static void Hardening041()
+    {
+        // ---- a backup whose database points a document outside the Files folder
+        var lib = NewLib("h41-src");
+        var src = NewDir("h41-files");
+        var outsideTarget = Path.Combine(Root, "h41-outside.txt");
+        File.WriteAllText(outsideTarget, "must survive");
+        var d = lib.Import(Put(src, "note.txt", "An ordinary note."), new CaseDocument { CategoryId = lib.Db.GetCategories().First().Id });
+        var zip = Path.Combine(Root, "h41-backup.zip");
+        BackupService.CreateBackup(lib, zip);
+
+        // Rewrite the backup: the record's stored name climbs out of Files, and a stray entry tries to escape staging
+        var tampered = Path.Combine(Root, "h41-tampered.zip");
+        var work = NewDir("h41-unpack");
+        ZipFile.ExtractToDirectory(zip, work);
+        SqliteConnection.ClearAllPools();
+        using (var c = new SqliteConnection($"Data Source={Path.Combine(work, "casekeeper.db")};Pooling=False"))
+        {
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "UPDATE Documents SET StoredFileName=$n, FileHash='TAMPERED'";
+            cmd.Parameters.AddWithValue("$n", @"..\..\h41-outside.txt");
+            cmd.ExecuteNonQuery();
+        }
+        SqliteConnection.ClearAllPools();
+        var storedName = Directory.GetFiles(Path.Combine(work, "Files")).Single();
+        File.Move(storedName, Path.Combine(work, "Files", "h41-outside.txt"));
+        using (var z = ZipFile.Open(tampered, ZipArchiveMode.Create))
+        {
+            z.CreateEntryFromFile(Path.Combine(work, "casekeeper.db"), "casekeeper.db");
+            z.CreateEntryFromFile(Path.Combine(work, "Files", "h41-outside.txt"), "Files/h41-outside.txt");
+            using var w = new StreamWriter(z.CreateEntry("Files/../../h41-escape.txt").Open());
+            w.Write("escaped");
+        }
+
+        var merged = NewLib("h41-merge");
+        // Where the tampered name would point from the unpacked backup: it must never be read
+        File.WriteAllText(Path.Combine(merged.RootFolder, "h41-outside.txt"), "SECRET FROM ELSEWHERE");
+        BackupService.MergeBackup(merged, tampered);
+        var md = merged.Db.GetDocuments().Single();
+        Check(Encoding.UTF8.GetString(merged.ReadDocumentBytes(md)) == "An ordinary note.",
+            "backup: a tampered stored name can't pull a file from elsewhere on the PC into the library");
+        Check(Path.GetDirectoryName(merged.GetFilePath(md)) == merged.FilesFolder && File.Exists(merged.GetFilePath(md)),
+            "backup: a tampered stored name lands inside Files when merged");
+        Check(File.ReadAllText(outsideTarget) == "must survive" && !File.Exists(Path.Combine(Root, "h41-escape.txt")) &&
+              !File.Exists(Path.Combine(merged.RootFolder, "..", "h41-escape.txt")), "backup: nothing outside the library is written by a tampered backup");
+
+        var restored = NewLib("h41-restore");
+        BackupService.RestoreBackup(restored, tampered);
+        SqliteConnection.ClearAllPools();
+        var reopened = new LibraryService(restored.RootFolder);
+        var rd = reopened.Db.GetDocuments().Single();
+        Check(Path.GetDirectoryName(reopened.GetFilePath(rd)) == reopened.FilesFolder, "backup: a restored record can only reach a file inside Files");
+        reopened.Purge(rd);
+        Check(File.Exists(outsideTarget), "backup: deleting a tampered record for good never deletes a file outside the library");
+
+        // ---- file types Windows would run, and extensions that aren't extensions
+        Check(FileKinds.IsRunnable("letter.EXE") && FileKinds.IsRunnable(".js") && FileKinds.IsRunnable(@"C:\x\a.lnk") && !FileKinds.IsRunnable("a.pdf") &&
+              !FileKinds.IsRunnable(".docx"), "shell: runnable file types are recognised, documents aren't");
+        Check(FileKinds.SafeExtension(".pdf") == ".pdf" && FileKinds.SafeExtension(@"\..\evil") == "" && FileKinds.SafeExtension(".p d f") == "" &&
+              FileKinds.SafeExtension("") == "" && FileKinds.SafeExtension(null) == "", "shell: only plain extensions are put on file names");
+        var odd = new CaseDocument { Title = "Odd", StoredFileName = Path.GetFileName(lib.GetFilePath(d)), FileExtension = @"\..\..\escape" };
+        var copy = lib.MakeFriendlyCopy(odd, NewDir("h41-copies"));
+        Check(Path.GetDirectoryName(copy) == Path.Combine(Root, "h41-copies"), "shell: a readable copy always stays in the folder asked for");
+
+        // ---- the vault: keys are wiped, and an absurd vault.json can't hang the unlock
+        var vlib = NewDir("h41-vault");
+        var vault = Vault.Load(vlib);
+        vault.Create("correct horse battery staple");
+        var key = vault.DatabasePassword;
+        Check(vault.TryUnlock("correct horse battery staple") && vault.DatabasePassword == key, "vault: re-checking the password keeps the key in use");
+        Check(!vault.TryUnlock("wrong") && vault.DatabasePassword == key, "vault: a wrong password doesn't disturb the unlocked key");
+        vault.Lock();
+        Check(!vault.IsUnlocked && vault.DatabasePassword == null, "vault: locking forgets the key");
+        var reloaded = Vault.Load(vlib);
+        Check(reloaded.TryUnlock("correct horse battery staple") && reloaded.DatabasePassword == key, "vault: the key unwraps again after locking");
+        var vjson = Path.Combine(vlib, Vault.FileName);
+        File.WriteAllText(vjson, Regex.Replace(File.ReadAllText(vjson), "\"Iterations\":\\s*\\d+", "\"Iterations\": 2000000000"));
+        var sw = Stopwatch.StartNew();
+        Check(!Vault.Load(vlib).TryUnlock("correct horse battery staple") && sw.Elapsed < TimeSpan.FromSeconds(5),
+            "vault: a vault.json asking for billions of rounds is refused at once");
+
+        // ---- Remove all CaseKeeper data: CaseKeeper's own files only, other files stay, network libraries are skipped
+        var target = NewDir("h41-remove");
+        var rlib = new LibraryService(target);
+        rlib.Import(Put(src, "remove-me.txt", "Delete this."), new CaseDocument { CategoryId = rlib.Db.GetCategories().First().Id });
+        rlib.TakeSnapshot("test");
+        File.WriteAllText(Path.Combine(target, "my own notes.txt"), "not CaseKeeper's");
+        Directory.CreateDirectory(Path.Combine(target, "_before_restore_20260101_000000"));
+        SqliteConnection.ClearAllPools();
+        var plan = new DataRemoval.Plan();
+        plan.Libraries.Add(target);
+        var problems = DataRemoval.Execute(plan);
+        Database.Retired = false;      // the test carries on using other databases
+        AppLog.Disabled = false;
+        Check(problems.Count == 0, "remove: no problems deleting a library");
+        Check(!File.Exists(Path.Combine(target, "casekeeper.db")) && !Directory.Exists(Path.Combine(target, "Files")) &&
+              !Directory.Exists(Path.Combine(target, "Snapshots")) && !Directory.Exists(Path.Combine(target, "_before_restore_20260101_000000")),
+            "remove: the database, documents, snapshots and restore leftovers are gone");
+        Check(File.ReadAllText(Path.Combine(target, "my own notes.txt")) == "not CaseKeeper's", "remove: other files in the library folder are left alone");
+        File.Delete(Path.Combine(target, "my own notes.txt"));
+        var emptyLib = NewDir("h41-remove-empty");
+        new LibraryService(emptyLib);
+        SqliteConnection.ClearAllPools();
+        var plan2 = new DataRemoval.Plan();
+        plan2.Libraries.Add(emptyLib);
+        DataRemoval.Execute(plan2);
+        Database.Retired = false;
+        AppLog.Disabled = false;
+        Check(!Directory.Exists(emptyLib), "remove: a library folder left empty is removed too");
+
+        Database.Retired = true;
+        bool refused;
+        try { lib.Db.GetDocuments(); refused = false; } catch (InvalidOperationException) { refused = true; }
+        Database.Retired = false;
+        Check(refused && lib.Db.GetDocuments().Count == 1, "remove: once data is removed, nothing can quietly recreate the database");
+
+        // ---- the website copy's paths are unchanged; AppData is recognised for the Store copy's checks
+        Check(!AppPackage.IsPackaged && LibraryService.DefaultRoot == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CaseKeeper"),
+            "paths: the website copy's default library is still %LOCALAPPDATA%\\CaseKeeper");
+        Check(AppPaths.IsInsideAppData(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "X")) &&
+              AppPaths.IsInsideAppData(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "X")) &&
+              !AppPaths.IsInsideAppData(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "CaseKeeper")),
+            "paths: AppData is recognised, the user folder isn't");
+        Check(AppPaths.PackagedLocationProblem(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "X")) == null,
+            "paths: the website copy may still keep a library in AppData");
+
+        // ---- copying the website library for the Store copy: exact, verified, never overwriting, logs left behind
+        var webLib = NewLib("h41-web");
+        webLib.Import(Put(src, "web.txt", "From the website version."), new CaseDocument { CategoryId = webLib.Db.GetCategories().First().Id });
+        Directory.CreateDirectory(Path.Combine(webLib.RootFolder, "Logs"));
+        File.WriteAllText(Path.Combine(webLib.RootFolder, "Logs", "casekeeper-20260101.log"), "log");
+        SqliteConnection.ClearAllPools();
+        var storeLib = Path.Combine(Root, "h41-store");
+        int n = LibraryService.CopyLibrary(webLib.RootFolder, storeLib, null);
+        Check(n > 0 && !Directory.Exists(Path.Combine(storeLib, "Logs")) && new LibraryService(storeLib).Db.GetDocuments().Single().Title == "web",
+            "copy: the website library copies across complete, without its logs");
+        SqliteConnection.ClearAllPools();
+        bool overwrote;
+        try { LibraryService.CopyLibrary(webLib.RootFolder, storeLib, null); overwrote = true; } catch (IOException) { overwrote = false; }
+        Check(!overwrote && File.Exists(Path.Combine(storeLib, "casekeeper.db")), "copy: never overwrites a library already there (and keeps it)");
     }
 }

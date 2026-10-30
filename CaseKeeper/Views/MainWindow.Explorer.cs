@@ -181,7 +181,8 @@ public partial class MainWindow
         _dragArmed = false;
         var ids = SelectedDocs().Select(d => d.Id).ToArray();
         if (ids.Length == 0) return;
-        DragDrop.DoDragDrop(DocGrid, new DataObject(DocDragFormat, ids), DragDropEffects.Move);
+        // The ids travel as plain text: .NET 9+ can no longer serialise custom types (BinaryFormatter is gone)
+        DragDrop.DoDragDrop(DocGrid, new DataObject(DocDragFormat, string.Join(",", ids)), DragDropEffects.Move);
     }
 
     private void CategoryTree_DragOver(object sender, DragEventArgs e)
@@ -203,8 +204,10 @@ public partial class MainWindow
         e.Handled = true;
         if (key == null) return;
 
-        if (e.Data.GetData(DocDragFormat) is long[] ids)
+        if (e.Data.GetData(DocDragFormat) is string idList)
         {
+            var ids = idList.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => long.TryParse(s, out var id) ? id : 0).Where(id => id > 0).ToArray();
             var docs = ids.Select(FindDoc).Where(d => d != null).ToList();
             if (key.StartsWith("cat:")) MoveToCategory(docs, long.Parse(key[4..]));
             else if (key.StartsWith("party:")) SetParty(docs, long.Parse(key[6..]));

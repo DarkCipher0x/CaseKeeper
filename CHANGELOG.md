@@ -9,18 +9,72 @@ Version numbers follow `MAJOR.MINOR.PATCH`:
 - **MAJOR** (0.x → 1.0.0) — the app is considered finished and stable.
 
 Installing a newer version over an older one upgrades it in place. **Your documents, notes,
-timeline, complaints and settings are never touched by an upgrade** — they live in
-`%LOCALAPPDATA%\CaseKeeper`, outside the program folder.
+timeline, complaints and settings are never touched by an upgrade** — they live outside the program
+folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\CaseKeeper` (Microsoft Store).
 
 ---
 
-## Unreleased
+## v0.4.2 — 30 October 2026
 
-### Microsoft Store package
-- CaseKeeper can now be built as a Microsoft Store package (`build-store.ps1`; see `docs/STORE.md`).
-  The Store copy uses the same library as the installer copy, in `%LOCALAPPDATA%\CaseKeeper`, and
-  uninstalling either one leaves your documents in place.
-- Restarting after a restore, a factory reset or an encryption change now also works in the Store copy.
+Runtime and component updates, with everything from 0.4.1. Version 0.4.1 never reached the website or the Microsoft
+Store, so if you're coming from 0.4.0, read the 0.4.1 notes below too. Upgrade over any earlier version: nothing you
+already have is changed.
+
+### Security and updates
+- **CaseKeeper now runs on .NET 10**, the current long-term-support version of the runtime, which Microsoft supports
+  until November 2028. Support for .NET 8 ends on 10 November 2026, after which it gets no more security fixes. The
+  runtime is built in, as before, so there is nothing extra to install.
+- Updated components: the Word export library (DocumentFormat.OpenXml 3.5.1), the database library
+  (Microsoft.Data.Sqlite 10.0.14) and the PDF library (PDFsharp 6.2.4). The packaging and Windows data-protection
+  components now come with the .NET runtime itself, so they're patched with it. No known vulnerabilities in any
+  component.
+
+### Fixes
+- Streaming an AI answer no longer ties up a background thread while it waits for the next part of the reply.
+- Dragging documents onto a category, party, *Starred* or *Deleted* in the Documents tree works with the new runtime.
+- Guide & FAQ articles fit the reading pane instead of running off its right-hand edge in a smaller window.
+
+### Source code
+- The source zip that comes with each release is now an exact `git archive` of the published source, with one top
+  folder and forward slashes, so it unpacks correctly on any system. Internal project notes are kept out of it.
+
+---
+
+## v0.4.1 — 30 October 2026
+
+Microsoft Store readiness, a way to remove all your data, and security hardening. Upgrade over any earlier
+version: nothing you already have is changed.
+
+### Microsoft Store
+- CaseKeeper can be built as a Microsoft Store package (`build-store.ps1`; see `docs/STORE.md`). Restarting after a
+  restore, a factory reset or an encryption change works in the Store copy too.
+- The Store copy needs no special permissions beyond being a normal desktop program. It keeps its library in
+  `%USERPROFILE%\CaseKeeper`, an ordinary folder you can see and back up, which uninstalling never deletes. Its
+  settings and logs live in its own app folder, which Windows removes with the app.
+- The first time the Store copy opens on a PC that already has a library from the website version, it offers to copy
+  that library across. Every file is checked after copying, and the original is left exactly as it was.
+- The Store copy won't put a library inside the hidden AppData folder, where Windows would delete it on uninstall.
+
+### Removing your data
+- **Settings → Factory reset → Remove all CaseKeeper data…** deletes every case library on this PC that CaseKeeper
+  knows about, with its settings, logs and temporary copies, then closes CaseKeeper. It lists exactly what will go,
+  offers a backup first, and needs DELETE typed. Only CaseKeeper's own files are removed from each folder, and
+  libraries on network drives are left alone.
+- **The website uninstaller now asks** whether to delete your library too. *No* is the default and keeps everything,
+  as before; *Yes* shows the same confirmation. A silent uninstall never deletes anything.
+- The user guide has a new section, *Where your data is kept, and removing it*.
+
+### Security
+- Encryption keys are wiped from memory as soon as they're no longer needed, not just dropped.
+- A tampered `vault.json` asking for an absurd amount of work can no longer freeze the password prompt.
+- Restoring or adding a backup can't write, read or delete anything outside the library, even if the backup has been
+  tampered with.
+- CaseKeeper won't open a document that Windows would run as a program (`.exe`, `.js`, `.lnk` and similar). It shows
+  it in File Explorer instead.
+- Importing a settings file no longer changes screen-lock and security settings, the confidentiality reminder, or
+  where the AI sends case material (unless that's on this PC or your home network). The import tells you what it
+  left alone.
+- The build now locks every NuGet package to an exact, checksummed version (`packages.lock.json`).
 
 ---
 

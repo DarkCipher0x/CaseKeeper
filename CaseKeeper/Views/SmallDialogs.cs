@@ -247,6 +247,113 @@ public class FactoryResetWindow : FormDialog
 }
 
 /// <summary>
+/// Confirms removing every trace of CaseKeeper from this PC (<see cref="DataRemoval"/>). Shown from
+/// Settings, and by the website installer's uninstaller when someone asks for their library to go too.
+/// Lists exactly which folders are affected, offers a backup when a library is open, and needs
+/// DELETE typed before the button works.
+/// </summary>
+public class RemoveAllDataWindow : FormDialog
+{
+    private const string Phrase = "DELETE";
+    private readonly TextBox _confirm;
+    private readonly bool _canBackUp;
+    private bool _backedUp;
+
+    public RemoveAllDataWindow(DataRemoval.Plan plan, Func<Task<bool>> backupNow = null)
+        : base("Remove all CaseKeeper data", 640, 660, "Delete everything", destructive: true)
+    {
+        _canBackUp = backupNow != null;
+        var warning = new Border
+        {
+            Padding = new Thickness(14, 12, 14, 12),
+            CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(0, 6, 0, 0),
+            BorderThickness = new Thickness(1)
+        };
+        warning.SetResourceReference(Border.BackgroundProperty, "DangerSoft");
+        warning.SetResourceReference(Border.BorderBrushProperty, "Danger");
+        var warnText = new TextBlock
+        {
+            Text = "This permanently deletes your case libraries and everything CaseKeeper has stored on this PC. It cannot be undone.",
+            TextWrapping = TextWrapping.Wrap,
+            FontWeight = FontWeights.SemiBold
+        };
+        warnText.SetResourceReference(TextBlock.ForegroundProperty, "Danger");
+        warning.Child = warnText;
+        Fields.Children.Add(warning);
+
+        void Section(string heading, IEnumerable<string> paths)
+        {
+            var list = paths.ToList();
+            if (list.Count == 0) return;
+            Fields.Children.Add(new TextBlock { Text = heading, Margin = new Thickness(0, 16, 0, 6), FontWeight = FontWeights.SemiBold });
+            foreach (var p in list)
+            {
+                var t = new TextBlock { Text = p, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 2) };
+                t.SetResourceReference(TextBlock.FontFamilyProperty, "MonoFont");
+                Fields.Children.Add(t);
+            }
+        }
+
+        Section("Case libraries (documents, notes, timeline, complaints, exports, snapshots, settings):", plan.Libraries);
+        Section("CaseKeeper's own settings, logs and temporary copies:", plan.OtherFolders);
+        Section("Left alone, because they're on a network drive other people or PCs may use:", plan.NetworkLibraries);
+
+        AddHint("Only CaseKeeper's own files are deleted from each library folder; anything else you keep there stays. " +
+                "The original files you imported from (wherever you kept them) and backups you saved elsewhere are not touched." +
+                (AppPackage.IsPackaged
+                    ? "\n\nTo remove the app itself afterwards: Start → right-click CaseKeeper → Uninstall."
+                    : ""));
+
+        if (_canBackUp)
+        {
+            var backupRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 16, 0, 0) };
+            var backupButton = new Button { Content = "Create a backup first…", Margin = new Thickness(0, 0, 10, 0) };
+            var backupState = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, Text = "Recommended, unless you're sure." };
+            backupState.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            backupButton.Click += async (_, _) =>
+            {
+                backupButton.IsEnabled = false;
+                try
+                {
+                    if (await backupNow())
+                    {
+                        _backedUp = true;
+                        backupState.Text = "✓ Backup saved.";
+                        backupState.SetResourceReference(TextBlock.ForegroundProperty, "Success");
+                    }
+                }
+                finally { backupButton.IsEnabled = true; }
+            };
+            backupRow.Children.Add(backupButton);
+            backupRow.Children.Add(backupState);
+            Fields.Children.Add(backupRow);
+        }
+
+        _confirm = Add($"Type {Phrase} to confirm", Box());
+        _confirm.TextChanged += (_, _) => ConfirmButton.IsEnabled = IsPhraseTyped;
+        ConfirmButton.IsEnabled = false;
+        Loaded += (_, _) => _confirm.Focus();
+    }
+
+    private bool IsPhraseTyped => _confirm.Text.Trim().Equals(Phrase, StringComparison.Ordinal);
+
+    protected override bool Validate()
+    {
+        if (!IsPhraseTyped)
+        {
+            MessageBox.Show(this, $"Type {Phrase} in the box to confirm.", Title);
+            return false;
+        }
+        if (_canBackUp && !_backedUp &&
+            MessageBox.Show(this, "You haven't made a backup. Your libraries will be gone for good.\n\nDelete everything anyway?",
+                Title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return false;
+        return true;
+    }
+}
+
+/// <summary>
 /// Sets up password protection. Deliberately hard to rush: the consequence of forgetting the
 /// password is spelled out, a backup is offered, and the button stays disabled until the risk
 /// has been acknowledged explicitly.

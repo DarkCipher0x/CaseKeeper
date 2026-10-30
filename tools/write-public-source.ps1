@@ -1,6 +1,8 @@
-# Writes the sanitised public source archive of one release, so every release carries the source it was built from
-# in a form fit for publication:
-#   dist\CaseKeeper-src-v<ver>.zip
+# Writes the sanitised source of one release, so every release carries the source it was built from in a form fit
+# for publication:
+#   CaseKeeper-src-v<ver>.zip in -OutDir (on its own it writes to dist\)
+# build-release.ps1 hands it to publish-public.ps1, which commits and tags it in the public clone; the zip that ships
+# in dist\<ver>\ is then git archive of that tag.
 #
 # What goes in: every file git tracks, minus release output, local tool caches and anything .gitignore'd. Before
 # zipping, every text file is scanned for things that must never be published: local user paths, private e-mail
@@ -8,19 +10,20 @@
 # by git and never leaves this PC). A hit fails with the file and line, and no archive is written.
 #
 # Usage: .\tools\write-public-source.ps1 -Version 0.4.1
-param([Parameter(Mandatory)][string]$Version)
+param([Parameter(Mandatory)][string]$Version, [string]$OutDir)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 $git = 'C:\Program Files\Git\cmd\git.exe'
 if (-not (Test-Path $git)) { $git = 'git' }
-$dist = Join-Path $root 'dist'
+$dist = if ($OutDir) { $OutDir } else { Join-Path $root 'dist' }
 New-Item -ItemType Directory -Force $dist | Out-Null
 
 # 1. The file list: tracked files (committed or staged). The repository is the source of truth for what is public.
 $files = & $git ls-files --cached --others --exclude-standard | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) }
 if ($LASTEXITCODE) { throw 'git ls-files failed' }
-$exclude = '^dist/', '^publish/', '^_archive/', '^\.claude/', '_wpftmp\.csproj$', '\.local\.txt$', '/(bin|obj)/'
+# docs/private/ holds internal notes (release and deploy process, who approves what): tracked here, never published.
+$exclude = '^dist/', '^publish/', '^_archive/', '^\.claude/', '^docs/private/', '_wpftmp\.csproj$', '\.local\.txt$', '/(bin|obj)/'
 $files = @($files | Where-Object { $f = $_; -not ($exclude | Where-Object { $f -match $_ }) })
 if ($files.Count -lt 100) { throw "only $($files.Count) files listed - is this the repository root?" }
 
@@ -28,7 +31,7 @@ if ($files.Count -lt 100) { throw "only $($files.Count) files listed - is this t
 # Test fixtures under tests\ use synthetic keys and paths, so the key and path rules skip them; the term list still
 # applies there. E-mail: documentation domains, the brand domain and GitHub's no-reply addresses are allowed.
 $rules = @(
-    @{ Name = 'a local user path'; Rx = '(?i)[A-Z]:\\Users\\(?!Public\\|demo\\|<)[^\\\s"''`]+'; SkipTests = $true },
+    @{ Name = 'a local user path'; Rx = '(?i)[A-Z]:\\Users\\(?!Public\\|demo\\)[^\\\s"''`]+'; SkipTests = $true },
     @{ Name = 'a private e-mail address'; Rx = '(?i)\b[A-Z0-9._%+-]+@(?!example\.|[a-z0-9.-]*\.(test|example|invalid|local|lan)\b|darkciphersystems\.com|anthropic\.com|users\.noreply\.github\.com)[A-Z0-9.-]+\.[A-Z]{2,}\b'; SkipTests = $false },
     @{ Name = 'an API key or token'; Rx = '\b(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b'; SkipTests = $true },
     @{ Name = 'a private key'; Rx = '-----BEGIN [A-Z ]*PRIVATE KEY-----'; SkipTests = $true }
@@ -61,26 +64,19 @@ if ($hits.Count -gt 0) {
 $binaryBad = $files | Where-Object { $_ -match '\.(pfx|p12|pem|key|snk|pvk|cer|kdbx|ppk|msix|appx)$' }
 if ($binaryBad) { throw "key material or packages in the tree: $($binaryBad -join ', ')" }
 
-# 3. The archive, with the folder name as its top level.
+# 3. The archive, with the folder name as its top level. Entries are written one by one with forward slashes:
+# ZipFile.CreateFromDirectory in Windows PowerShell 5.1 stores backslashes, which other systems unpack as one flat
+# folder of oddly named files. (The published zip is git archive of the public tag - build-release.ps1 step 5;
+# this one is what publish-public.ps1 commits from.)
 $name = "CaseKeeper-src-v$Version"
 $zip = Join-Path $dist "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip }
-$stage = Join-Path ([IO.Path]::GetTempPath()) ('ck-source-' + [guid]::NewGuid().ToString('N'))
-$top = Join-Path $stage $name
-foreach ($f in $files) {
-    $dest = Join-Path $top $f
-    New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
-    Copy-Item (Join-Path $root $f) $dest
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$archive = [IO.Compression.ZipFile]::Open($zip, [IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($f in $files) {
+        [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $root $f), "$name/$f", [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
 }
-[IO.File]::WriteAllText((Join-Path $top 'SOURCE-ARCHIVE.txt'), @"
-DarkCipher Systems
-CaseKeeper $Version - source archive
-
-This is the source tree the $Version release was built from, as published. Build it with
-build-release.ps1 (RELEASING.md). Licence: MIT (LICENSE). Third-party components: THIRD-PARTY-NOTICES.md.
-Scanned before publication for local paths, private addresses and keys (tools\write-public-source.ps1).
-"@, (New-Object Text.UTF8Encoding $false))
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
-Remove-Item $stage -Recurse -Force
+finally { $archive.Dispose() }
 Write-Host ("Source: {0} ({1} files, {2:N1} MB), privacy scan clean ({3} rule(s), {4} private term(s))" -f $zip, $files.Count, ((Get-Item $zip).Length / 1MB), $rules.Count, $terms.Count)

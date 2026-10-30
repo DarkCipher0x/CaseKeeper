@@ -413,7 +413,7 @@ public partial class DocumentViewerWindow : Window
 
     private void OpenExternal_Click(object sender, RoutedEventArgs e)
     {
-        try { Process.Start(new ProcessStartInfo(Lib.MakeFriendlyCopy(_doc)) { UseShellExecute = true }); }
+        try { MainWindow.OpenWithShell(Lib.MakeFriendlyCopy(_doc)); }
         catch (Exception ex) { MessageBox.Show(this, "Couldn't open the file: " + ex.Message, "Open"); }
     }
 }

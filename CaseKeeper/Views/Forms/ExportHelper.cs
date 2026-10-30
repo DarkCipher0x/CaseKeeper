@@ -116,8 +116,7 @@ public static class ExportHelper
     {
         try
         {
-            var readable = App.Library.ReadableExportPath(path);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(readable) { UseShellExecute = true });
+            MainWindow.OpenWithShell(App.Library.ReadableExportPath(path));
         }
         catch (Exception ex) { MessageBox.Show("Couldn't open the file: " + ex.Message, "CaseKeeper"); }
     }

@@ -145,14 +145,52 @@ begin
   RemoveDir(OldParent);
 end;
 
+var
+  DataRemoved: Boolean;
+
+{ Before the program files go: offer to delete the library as well. The default answer is No, and
+  a silent uninstall never deletes anything. Saying Yes runs CaseKeeper's own "Remove all CaseKeeper
+  data" confirmation (as the signed-in user, not as administrator, so it finds that person's
+  library), which lists exactly what will be deleted and needs DELETE typed. Exit code 0 means it
+  was deleted. }
+procedure OfferToRemoveData();
+var
+  ResultCode: Integer;
+  Exe: String;
+begin
+  DataRemoved := False;
+  Exe := ExpandConstant('{app}\{#AppExeName}');
+  if not FileExists(Exe) then Exit;
+  if SuppressibleMsgBox('Do you also want to delete your CaseKeeper library?' + #13#10 + #13#10 +
+       'That is your documents, notes, timeline, complaints, exports and settings.' + #13#10 + #13#10 +
+       'Choose No to keep them (recommended if you might reinstall: CaseKeeper picks up where you left off).' + #13#10 +
+       'Choose Yes to see exactly what would be deleted and confirm it.',
+       mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) <> IDYES then Exit;
+  if ExecAsOriginalUser(Exe, '--remove-data', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
+    DataRemoved := (ResultCode = 0)
+  else
+    Log('Could not start CaseKeeper to remove its data: ' + SysErrorMessage(ResultCode));
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  // UninstallSilent guard: without it a /VERYSILENT uninstall waits forever on this dialog
-  if (CurUninstallStep = usPostUninstall) and (not UninstallSilent) then
-    MsgBox('CaseKeeper has been removed.' + #13#10 + #13#10 +
-           'Your documents, notes, timeline and settings have been left on this PC at:' + #13#10 +
-           ExpandConstant('{localappdata}\CaseKeeper') + #13#10 + #13#10 +
-           '(If you moved your library somewhere else, it is still there.)' + #13#10 +
-           'Delete that folder yourself if you want them gone for good.',
-           mbInformation, MB_OK);
+  // UninstallSilent guard: without it a /VERYSILENT uninstall waits forever on these dialogs
+  if UninstallSilent then Exit;
+  if CurUninstallStep = usUninstall then
+    OfferToRemoveData()
+  else if CurUninstallStep = usPostUninstall then
+  begin
+    if DataRemoved then
+      MsgBox('CaseKeeper and your CaseKeeper data have been removed from this PC.' + #13#10 + #13#10 +
+             'Backups you saved elsewhere, and the original files you imported from, have not been touched.',
+             mbInformation, MB_OK)
+    else
+      MsgBox('CaseKeeper has been removed.' + #13#10 + #13#10 +
+             'Your documents, notes, timeline and settings have been left on this PC at:' + #13#10 +
+             ExpandConstant('{localappdata}\CaseKeeper') + #13#10 + #13#10 +
+             '(If you moved your library somewhere else, it is still there.)' + #13#10 +
+             'To remove them later, reinstall CaseKeeper and use Settings > Factory reset > Remove all CaseKeeper data,' + #13#10 +
+             'or delete that folder yourself.',
+             mbInformation, MB_OK);
+  end;
 end;

@@ -351,8 +351,18 @@ public partial class MainWindow : Window
             "Confidentiality reminder", MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK;
     }
 
-    private static void OpenWithShell(string path)
+    internal static void OpenWithShell(string path)
     {
+        if (File.Exists(path) && FileKinds.IsRunnable(path))
+        {
+            // Opening this would run it as a program, not display it
+            AppLog.Warn("Shell", "Refused to open a runnable file type: " + Path.GetExtension(path));
+            MessageBox.Show($"\"{Path.GetFileName(path)}\" is a type of file Windows would run as a program, so CaseKeeper " +
+                            "won't open it. It will be shown in File Explorer instead.", "CaseKeeper",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            try { ShowInExplorer(path); } catch (Exception ex) { AppLog.Warn("Shell", "Couldn't show a file in Explorer", ex); }
+            return;
+        }
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
         catch (Exception ex)
         {

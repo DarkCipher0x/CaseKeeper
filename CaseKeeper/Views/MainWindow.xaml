@@ -986,6 +986,11 @@
                                 <WrapPanel Margin="0,14,0,0">
                                     <Button Content="Factory reset…" Style="{StaticResource DangerButton}" Click="FactoryReset_Click"/>
                                 </WrapPanel>
+                                <TextBlock Style="{StaticResource H2}" Text="Remove all CaseKeeper data from this PC" Margin="0,18,0,0" Foreground="{DynamicResource Danger}"/>
+                                <TextBlock Style="{StaticResource Muted}" Text="Uninstalling CaseKeeper deliberately leaves your case libraries in place, so reinstalling picks up where you left off. Use this before uninstalling if you want them gone too: it deletes every case library on this PC that CaseKeeper knows about, its settings, logs and temporary copies, then closes CaseKeeper. Libraries on network drives are left alone."/>
+                                <WrapPanel Margin="0,14,0,0">
+                                    <Button Content="Remove all CaseKeeper data…" Style="{StaticResource DangerButton}" Click="RemoveAllData_Click"/>
+                                </WrapPanel>
                             </StackPanel>
                         </Border>
 

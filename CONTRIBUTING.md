@@ -25,7 +25,7 @@ bar is: **private, stable, and plain English.**
 
 ## Building and testing
 
-You need the .NET 8 SDK on Windows.
+You need the .NET 10 SDK on Windows.
 
 ```powershell
 dotnet build CaseKeeper

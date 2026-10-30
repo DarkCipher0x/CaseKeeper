@@ -8,11 +8,12 @@ You need three things on the build machine:
 
 | Tool | Why | Install |
 |---|---|---|
-| .NET 8 SDK | builds the app | `winget install Microsoft.DotNet.SDK.8` |
+| .NET 10 SDK | builds the app | `winget install Microsoft.DotNet.SDK.10` |
 | Inno Setup 6 | builds the installer | `winget install JRSoftware.InnoSetup` |
 | Git | pushes to GitHub | `winget install Git.Git` |
 
-Optionally `winget install GitHub.cli` for the `gh` command, which makes releases a one-liner.
+No GitHub CLI or token is needed. The scripts use the GitHub sign-in Git Credential Manager already holds,
+and the first push opens a sign-in window once.
 
 ## Cutting a release
 
@@ -40,36 +41,45 @@ Optionally `winget install GitHub.cli` for the `gh` command, which makes release
    - ...
    ```
 
-   The build warns you if the changelog has no entry for the version you're building.
+   The heading must be exactly `## v<version>`. The build refuses to run without it, because that
+   section becomes the GitHub release notes.
 
-3. **Build it:**
+3. **Run one command**, which does everything else:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File build-release.ps1
    ```
 
-   This runs `dotnet publish` (the app ships with its own copy of .NET), builds the installer,
-   writes the privacy-scanned source zip and `SHA256SUMS.txt` in `dist\`, and finally publishes
-   the sanitised source to GitHub as tag `v0.2.0` (see *The GitHub repository* below). Use
-   `-NoPublish` to hold that last step back until you've tested the upgrade.
+   It stops at the first problem, in this order:
 
-4. **Test the upgrade** before publishing: install the new exe on a machine that already has the
-   previous version and check your documents are still there. Upgrades keep the same install
-   folder and leave `%LOCALAPPDATA%\CaseKeeper` untouched.
+   | Step | What happens |
+   |---|---|
+   | Checks | The version must be new: a built or published version is never overwritten. The changelog section must exist. |
+   | Tests | The three test programs run; any failure stops the release. |
+   | Installer | `dotnet publish` (self-contained .NET), then Inno Setup. |
+   | Store package | `build-store.ps1` builds the `.msix` from the same build. |
+   | Source | `tools\write-public-source.ps1` privacy-scans the source, `tools\publish-public.ps1 -NoPush` commits and tags it in `..\CaseKeeper-public` (not pushed yet), and the source zip is `git archive` of that tag. |
+   | Local copy | Everything is kept in **`dist\<version>\`**: the installer, source zip, `.msix`, `CHANGELOG.md`, `USER-GUIDE.md`, `STORE.md` and `SHA256SUMS.txt`. |
+   | Private repo | This repository is committed as `Release v<version>` and tagged locally. |
+   | GitHub source | `tools\publish-public.ps1` pushes that commit and tag `v<version>`. |
+   | GitHub release | `tools\publish-github-release.ps1` creates *CaseKeeper v&lt;version&gt;* with the changelog notes, attaches the installer, source zip and `SHA256SUMS.txt`, and checks GitHub's own SHA-256 of each upload. |
 
-5. **Commit** in this private repository (it never goes online):
+   Useful switches:
 
-   ```powershell
-   git add -A
-   git commit -m "Release v0.2.0"
-   ```
+   | Switch | Effect |
+   |---|---|
+   | `-NoPublish` | Stop before GitHub, so nothing leaves this PC. |
+   | `-PublishOnly` | Publish a version that's already built in `dist\<version>\`. |
+   | `-Draft` | Create the GitHub release as a draft. |
+   | `-NoStore` | Skip the `.msix`. |
 
-6. **Publish the release** on github.com: *Releases* → *Draft a new release* → choose the
-   `v0.2.0` tag → paste that version's changelog section and the contents of `SHA256SUMS.txt` into
-   the description → attach `CaseKeeper-Setup-v0.2.0.exe`, `CaseKeeper-src-v0.2.0.zip` and
-   `SHA256SUMS.txt` → *Publish release*. Put the same files and checksums on the website, so the
-   hashes match everywhere.
+   To test the upgrade before anything goes online, run with `-NoPublish`, install
+   `dist\<version>\CaseKeeper-Setup-v<version>.exe` over the previous version, check your documents
+   are still there, then run `build-release.ps1 -PublishOnly`.
 
+4. **By hand afterwards:** put the installer, source zip and SHA-256s on the website, and upload
+   the `.msix` in Partner Center as a new Store submission (see [docs/STORE.md](docs/STORE.md)).
+   The script prints this reminder at the end.
 ## The GitHub repository
 
 There are two git repositories, and only one of them ever goes online:
@@ -79,21 +89,26 @@ There are two git repositories, and only one of them ever goes online:
 | `CaseKeeper\` (this one) | The private working repository. It has **no GitHub remote**: its history never leaves this PC. |
 | `..\CaseKeeper-public\` | A clone of `github.com/DarkCipher0x/CaseKeeper`. It only ever receives the sanitised source of a release. |
 
-`build-release.ps1` ends by publishing the release to the public repository:
+`build-release.ps1` prepares the public repository during the build and publishes it at the end:
 
 1. `tools\write-public-source.ps1` copies every tracked file (minus `dist\`, `publish\`, `_archive\`
    and local files) and scans each text file for local user paths, private e-mail addresses, keys,
    tokens and the private terms in `tools\privacy-terms.local.txt`. That file is git-ignored and never
-   leaves this PC. Any hit stops the build, and the result is `dist\CaseKeeper-src-v<ver>.zip`.
-2. `tools\publish-public.ps1` unpacks that zip into `..\CaseKeeper-public` and checks it:
+   leaves this PC. Any hit stops the build. The result is a zip in a temporary folder.
+2. `tools\publish-public.ps1 -NoPush` unpacks that zip into `..\CaseKeeper-public` and checks it:
    - every image must be listed by SHA-256 in `tools\approved-images.txt`, meaning someone has
      looked at it, because text scans can't see pixels;
    - certificates, keys, debug symbols and packages are refused.
 
    It then makes one commit, `CaseKeeper <ver> - sanitised public source`, and a tag `v<ver>`,
-   authored as `DarkCipher0x <DarkCipher0x@users.noreply.github.com>`, and pushes both.
+   authored as `DarkCipher0x <DarkCipher0x@users.noreply.github.com>`, without pushing.
+3. `dist\<ver>\CaseKeeper-src-v<ver>.zip` is `git archive --prefix=CaseKeeper-src-v<ver>/` of that tag:
+   one top folder, forward slashes, byte-for-byte what anyone gets by archiving the tag themselves.
+   The website only publishes source zips made this way.
+4. At the end, `tools\publish-public.ps1` (without `-NoPush`) pushes the commit and the tag as they are.
 
-Use `-NoPublish` to build without publishing, then run `tools\publish-public.ps1 -Version <ver>` later.
+Use `-NoPublish` to build without publishing, then `build-release.ps1 -PublishOnly` later. If a build
+stops after step 2 and was never pushed, remove the local tag before building again: the build says how.
 Add a new image to `tools\approved-images.txt` only after viewing it:
 
 ```powershell
@@ -101,7 +116,9 @@ Add a new image to `tools\approved-images.txt` only after viewing it:
 ```
 
 The public tree is replaced wholesale on every release, so edit the README and `.github\` here,
-never on GitHub.
+never on GitHub. That includes **Dependabot**: don't merge its pull requests on GitHub. Make the
+same change here instead, and once the next release is published, Dependabot sees the update and
+closes its pull request by itself.
 
 First-time setup of the public clone, which signs in to GitHub once in the browser:
 
