@@ -151,7 +151,7 @@ public partial class MainWindow
                 tooltip: "Deleted documents are kept here for a while so you can restore them"));
 
         if (toSelect != null) toSelect.IsSelected = true;
-        else if (!filtering && !_filterKey.StartsWith("group:")) _filterKey = "all";
+        else if (!filtering && !_filterKey.StartsWith("group:") && _filterKey != "set") _filterKey = "all";
         _buildingTree = false;
     }
 
@@ -177,6 +177,10 @@ public partial class MainWindow
         else if (e.NewValue is TreeViewItem group)
             group.IsExpanded = !group.IsExpanded; // headings without a list of their own just expand/collapse
     }
+
+    // Case map: the documents behind one cell
+    private HashSet<long> _setIds = new();
+    private string _setTitle = "";
 
     private void SelectFilter(string key)
     {
@@ -207,6 +211,12 @@ public partial class MainWindow
             title = "Deleted items";
             var days = Db.GetSetting("bin.days", "30");
             subtitle = $"Kept for {days} days, then removed for good. Right-click to restore";
+        }
+        else if (_filterKey == "set")
+        {
+            list = list.Where(d => _setIds.Contains(d.Id));
+            title = _setTitle;
+            subtitle = "From the Case map";
         }
         else if (_filterKey.StartsWith("group:"))
         {

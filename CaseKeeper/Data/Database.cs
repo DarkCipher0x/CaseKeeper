@@ -226,6 +226,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS SearchIndex USING fts5(content, doc_id UNINDE
         // v0.4: where a bulk-imported file came from (relative path only) and its original timestamp
         AddColumnIfMissing(c, "Documents", "SourcePath", "TEXT");
         AddColumnIfMissing(c, "Documents", "SourceModifiedAt", "TEXT");
+        // v0.7: when the file says it was last saved (PDF/Office/photo metadata) and its Office revision number
+        AddColumnIfMissing(c, "Documents", "SavedAt", "TEXT");
+        AddColumnIfMissing(c, "Documents", "Revision", "INTEGER");
         Exec(c, "CREATE INDEX IF NOT EXISTS IX_Documents_Hash ON Documents(FileHash)");
 
         EnsureAuditTable(c);
@@ -294,10 +297,15 @@ CREATE VIRTUAL TABLE IF NOT EXISTS SearchIndex USING fts5(content, doc_id UNINDE
         return cmd.ExecuteScalar() as string ?? fallback;
     }
 
+    /// <summary>Raised after any setting is saved, with its key (for example to refresh the sidebar's privacy status).</summary>
+    public static event Action<string> SettingChanged;
+
     public void SetSetting(string key, string value)
     {
-        using var c = Open();
-        Exec(c, "INSERT INTO Settings(Key,Value) VALUES($k,$v) ON CONFLICT(Key) DO UPDATE SET Value=$v", ("$k", key), ("$v", value));
+        using (var c = Open())
+            Exec(c, "INSERT INTO Settings(Key,Value) VALUES($k,$v) ON CONFLICT(Key) DO UPDATE SET Value=$v", ("$k", key), ("$v", value));
+        try { SettingChanged?.Invoke(key); }
+        catch (Exception ex) { Services.AppLog.Warn("Settings", $"A listener for {key} failed", ex); }
     }
 
     public Dictionary<string, string> AllSettings()
@@ -404,8 +412,26 @@ CREATE VIRTUAL TABLE IF NOT EXISTS SearchIndex USING fts5(content, doc_id UNINDE
             DateTimeStyles.RoundtripKind, out var da) ? da : null,
         SourcePath = HasColumn(r, "SourcePath") ? S(r, "SourcePath") : "",
         SourceModifiedAt = HasColumn(r, "SourceModifiedAt") && DateTime.TryParse(r["SourceModifiedAt"] as string, CultureInfo.InvariantCulture,
-            DateTimeStyles.RoundtripKind, out var sm) ? sm : null
+            DateTimeStyles.RoundtripKind, out var sm) ? sm : null,
+        SavedAt = HasColumn(r, "SavedAt") && DateTime.TryParse(r["SavedAt"] as string, CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind, out var sv) ? sv : null,
+        Revision = HasColumn(r, "Revision") && r["Revision"] is long rv ? (int)rv : null
     };
+
+    /// <summary>
+    /// Records a document's file dates: when the original file was last changed, when the file itself says it was
+    /// last saved, and its Office revision number. Information only; never used as the document's own date.
+    /// Pass null to leave a value as it is.
+    /// </summary>
+    public void SetFileDates(long documentId, DateTime? sourceModified, DateTime? savedAt, int? revision)
+    {
+        if (sourceModified == null && savedAt == null && revision == null) return;
+        using var c = Open();
+        Exec(c, "UPDATE Documents SET SourceModifiedAt=COALESCE($sm,SourceModifiedAt), SavedAt=COALESCE($sv,SavedAt), Revision=COALESCE($rv,Revision) WHERE Id=$id",
+            ("$sm", (object)sourceModified?.ToString("o", CultureInfo.InvariantCulture) ?? DBNull.Value),
+            ("$sv", (object)savedAt?.ToString("o", CultureInfo.InvariantCulture) ?? DBNull.Value),
+            ("$rv", (object)revision ?? DBNull.Value), ("$id", documentId));
+    }
 
     private static bool HasColumn(SqliteDataReader r, string name)
     {
@@ -463,8 +489,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS SearchIndex USING fts5(content, doc_id UNINDE
     {
         using var cmd = c.CreateCommand();
         cmd.CommandText = @"INSERT INTO Documents(Title,CategoryId,PartyId,OriginalFileName,StoredFileName,FileExtension,FileHash,FileSize,
-            DocumentDate,DateReceived,Author,Tags,Description,Notes,IsImportant,PageCount,OcrStatus,ImportedAt,ExhibitRef,SourcePath,SourceModifiedAt)
-            VALUES($t,$c,$pid,$o,$s,$e,$h,$sz,$dd,$dr,$a,$tg,$de,$n,$i,$p,$ocr,$ia,$ex,$sp,$sm); SELECT last_insert_rowid();";
+            DocumentDate,DateReceived,Author,Tags,Description,Notes,IsImportant,PageCount,OcrStatus,ImportedAt,ExhibitRef,SourcePath,SourceModifiedAt,SavedAt,Revision)
+            VALUES($t,$c,$pid,$o,$s,$e,$h,$sz,$dd,$dr,$a,$tg,$de,$n,$i,$p,$ocr,$ia,$ex,$sp,$sm,$sv,$rv); SELECT last_insert_rowid();";
+        cmd.Parameters.AddWithValue("$sv", (object)d.SavedAt?.ToString("o", CultureInfo.InvariantCulture) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$rv", (object)d.Revision ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ex", d.ExhibitRef ?? "");
         cmd.Parameters.AddWithValue("$sp", d.SourcePath ?? "");
         cmd.Parameters.AddWithValue("$sm", (object)d.SourceModifiedAt?.ToString("o", CultureInfo.InvariantCulture) ?? DBNull.Value);

@@ -58,7 +58,7 @@ public sealed class AnalysisValidationException : Exception
 public static class AnalysisSchema
 {
     /// <summary>Bump when the schema changes, so earlier analyses are recognised as out of date.</summary>
-    public const string Version = "bulk-schema-1";
+    public const string Version = "bulk-schema-2";
     /// <summary>Bump when the checks applied to answers change.</summary>
     public const string AnalysisVersion = "bulk-checks-4";
 
@@ -70,7 +70,10 @@ public static class AnalysisSchema
         "court", "venue", "attendanceMode", "hearingType", "judge", "caseNumber", "hearingStatus", "timeEstimate", "previousDate",
         "responsibleParty", "actionRequired", "dueDate", "dueDateText", "sourceDate", "calculationRule", "wording",
         "name", "role", "representative", "dateOfBirth", "dateOfBirthText", "orderType", "madeBy", "contactOutcome",
-        "recipient", "reference", "organisation"
+        "recipient", "reference", "organisation",
+        // 0.7: complaints (deadline for a reply, and whether this is the reply), contact details for professionals,
+        // and Scott schedule allegations
+        "responseDue", "responseDueText", "isResponse", "contactDetails", "allegedBy", "findingSought"
     };
 
     private static JsonObject Str() => new() { ["type"] = "string" };

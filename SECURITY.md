@@ -32,8 +32,10 @@ What to expect:
 
 ## How CaseKeeper protects data
 
-- **Local only.** Documents, the database and logs stay on your computer. Nothing is uploaded. The
-  optional AI talks only to the Ollama server you choose, normally your own PC. *Check for updates*
+- **Local only** (unless you choose a cloud AI in *Settings → AI*). Documents, the database and logs stay on
+  your computer. The optional local AI talks only to the Ollama server you choose, normally your own PC. A cloud AI
+  receives only the text you ask it to read, masked by default, after you agree; the sidebar then shows
+  *Cloud AI on* in amber. *Check for updates*
   only downloads, and only when you click it or switch on automatic checks.
 - **Optional encryption.** A random 256-bit master key encrypts documents (AES-256-GCM) and the
   database (SQLCipher). The key is stored only in wrapped form, protected by a key derived from your

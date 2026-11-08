@@ -423,6 +423,21 @@ public static class CaseModules
     }
 
     // ================================================================== Scott schedule
+    /// <summary>The Scott schedule form (also used by Import review's Edit &amp; approve).</summary>
+    public static FieldSpec[] ScottFields() => new[]
+    {
+        FieldSpec.Int("Number", nameof(ScottItem.ItemNo)),
+        FieldSpec.Date("Date (if known)", nameof(ScottItem.IncidentDate)),
+        FieldSpec.Text("Or approximate date", nameof(ScottItem.DateText), hint: "e.g. Summer 2024, between May and July 2023"),
+        FieldSpec.Choice("Alleged by", nameof(ScottItem.AllegedBy), new[] { "Applicant", "Respondent" }.Concat(PartyNames()).Distinct(), half: true),
+        FieldSpec.Choice("Status", nameof(ScottItem.Status), ScottItem.Statuses, editable: false, half: true),
+        FieldSpec.Multi("Allegation (what is said to have happened)", nameof(ScottItem.Allegation), 110),
+        FieldSpec.Multi("Response", nameof(ScottItem.Response), 90),
+        FieldSpec.Text("Evidence relied on (bundle page refs, e.g. C12–C15)", nameof(ScottItem.EvidenceRefs)),
+        FieldSpec.Multi("Finding sought", nameof(ScottItem.FindingSought), 60),
+        FieldSpec.Multi("Notes / finding made", nameof(ScottItem.Notes), 60)
+    };
+
     public static RecordListView<ScottItem> Scott()
     {
         RecordListView<ScottItem> view = null;
@@ -455,19 +470,7 @@ public static class CaseModules
             },
             Landscape = true,
             DialogHeight = 820,
-            Fields = s => new[]
-            {
-                FieldSpec.Int("Number", nameof(ScottItem.ItemNo)),
-                FieldSpec.Date("Date (if known)", nameof(ScottItem.IncidentDate)),
-                FieldSpec.Text("Or approximate date", nameof(ScottItem.DateText), hint: "e.g. Summer 2024, between May and July 2023"),
-                FieldSpec.Choice("Alleged by", nameof(ScottItem.AllegedBy), new[] { "Applicant", "Respondent" }.Concat(PartyNames()).Distinct(), half: true),
-                FieldSpec.Choice("Status", nameof(ScottItem.Status), ScottItem.Statuses, editable: false, half: true),
-                FieldSpec.Multi("Allegation (what is said to have happened)", nameof(ScottItem.Allegation), 110),
-                FieldSpec.Multi("Response", nameof(ScottItem.Response), 90),
-                FieldSpec.Text("Evidence relied on (bundle page refs, e.g. C12–C15)", nameof(ScottItem.EvidenceRefs)),
-                FieldSpec.Multi("Finding sought", nameof(ScottItem.FindingSought), 60),
-                FieldSpec.Multi("Notes / finding made", nameof(ScottItem.Notes), 60)
-            },
+            Fields = _ => ScottFields(),
             ExtraButtons = v => new[] { Ui.Button("Renumber 1, 2, 3…", "", (_, _) => Renumber(v)) }
         });
         return view;

@@ -339,6 +339,8 @@ public static class FindingKinds
     public const string Safeguarding = "safeguarding";
     public const string MissingDocument = "missingDocument";
     public const string Issue = "issueForReview";
+    /// <summary>An allegation for the Scott schedule (what is said to have happened, by whom, when).</summary>
+    public const string ScottItem = "scottItem";
     /// <summary>Raised by CaseKeeper's own cross-checks (not the AI): conflicting dates, case numbers and so on.</summary>
     public const string Conflict = "conflict";
 
@@ -346,7 +348,7 @@ public static class FindingKinds
     public static readonly string[] Extractable =
     {
         Hearing, TimelineEvent, ChronologyEntry, Order, Direction, Task, Deadline, Contact, Party, Child,
-        Complaint, Safeguarding, MissingDocument, Issue
+        Complaint, Safeguarding, MissingDocument, Issue, ScottItem
     };
 
     public static string Label(string kind) => kind switch
@@ -367,6 +369,7 @@ public static class FindingKinds
         Safeguarding => "Safeguarding",
         MissingDocument => "Missing document",
         Issue => "For review",
+        ScottItem => "Scott schedule",
         Conflict => "Conflict",
         _ => kind
     };

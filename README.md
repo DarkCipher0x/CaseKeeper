@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.6.2-3dd6c8" alt="Version 0.6.2">
+  <img src="https://img.shields.io/badge/version-0.7.0-3dd6c8" alt="Version 0.7.0">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b7a75" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-3dd6c8" alt="MIT licence"></a>
@@ -55,7 +55,7 @@ Both use the same library, so you can switch between them without losing anythin
 **Check your download.** Each release lists SHA-256 checksums in `SHA256SUMS.txt`. In PowerShell:
 
 ```powershell
-Get-FileHash .\CaseKeeper-Setup-v0.6.2.exe -Algorithm SHA256
+Get-FileHash .\CaseKeeper-Setup-v0.7.0.exe -Algorithm SHA256
 ```
 
 The result should match the line for that file exactly. If it doesn't, don't run it.
@@ -115,7 +115,13 @@ signatures don't vouch for.
   birth and addresses are replaced with tags before sending and put back on your PC; a review screen shows where it
   goes, what's masked and which documents couldn't be masked well (read those locally, skip them, or send anyway).
 - **Duplicates & versions** – finds copies and versions of the same document by their words (a PDF and a Word copy, a
-  draft and its final), shows which is newest and why, and what changed, sentence by sentence.
+  draft and its final), shows which is the latest edit and why (including the date saved inside the file), what
+  changed sentence by sentence or side by side, and can move older copies to Deleted items.
+- **Check my library** – organise everything already in CaseKeeper in one go, with AI or with CaseKeeper's own rules:
+  categories, parties and contacts, hearings and orders, the timeline, actions, complaints (filed, filled in, and
+  replies matched to them) and the Scott schedule – only the sections you choose, all waiting for your approval.
+- **Case map** – a matrix of your documents by category group (or party) against time, with hearings, orders,
+  complaints and deadlines on the same time line, and an AI-written **case overview** of the whole case.
 
 **Safety**
 - **Audit trail** of every change (old → new values), chained with SHA-256 fingerprints so tampering is detectable.

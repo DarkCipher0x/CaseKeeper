@@ -264,6 +264,7 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition/>
                                 </Grid.ColumnDefinitions>
                                 <Button Style="{StaticResource PrimaryButton}" Click="Import_Click" Padding="14,7">
@@ -273,7 +274,11 @@
                                         ToolTip="Bulk Case Import: a folder and all its subfolders (Ctrl+Shift+I)">
                                     <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" Margin="0,0,8,0"/><TextBlock Text="Import folder"/></StackPanel>
                                 </Button>
-                                <Grid Grid.Column="2" Margin="6,0,0,0">
+                                <Button Grid.Column="2" Click="LibraryCheck_Click" Padding="12,7" Margin="6,0,0,0" AutomationProperties.Name="Check my library"
+                                        ToolTip="Library check: organise the documents already here, find copies and versions, and fill in the case sections">
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D5;" Style="{StaticResource Icon}" Margin="0,0,8,0"/><TextBlock Text="Check library"/></StackPanel>
+                                </Button>
+                                <Grid Grid.Column="3" Margin="6,0,0,0">
                                     <TextBox x:Name="DocFilterBox" TextChanged="DocFilterBox_TextChanged" Padding="30,6,8,6"/>
                                     <TextBlock Text="&#xE71C;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedBrush}" Margin="10,0,0,0" FontSize="12" IsHitTestVisible="False"/>
                                     <TextBlock Text="Filter by title, sender, tag…" Foreground="{DynamicResource MutedBrush}" Margin="31,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"

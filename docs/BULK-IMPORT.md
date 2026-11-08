@@ -123,8 +123,60 @@ Text is normalised into 5-word shingles; 64 MinHash values in 16 bands × 4 rows
 grouped with union-find. Documents under 12 words are ignored. A group is `Exact` (same SHA-256), `SameContent`
 (≥ 0.97) or `Versions` (≥ 0.70). The newest is the latest document date, then file modified time, then the longest,
 and `NewestReason` says which. `Diff` is a sentence-level LCS (falling back to a set comparison above 4 M cells).
-Decisions (`versions.decisions` setting, keyed by a hash of the sorted ids) add tags only – *Latest version* /
-*Older version* or *Version* – are audited as `document.versions`, and can be undone. Nothing is deleted.
+Decisions (`versions.decisions` setting, keyed by a hash of the sorted ids) add tags – *Latest version* /
+*Older version* or *Version* – are audited as `document.versions`, and can be undone. "Move older to Deleted items"
+soft-deletes the older members (recoverable for `bin.days`) and tags the newest; undo restores them.
+
+From 0.7.0 the newest is ranked by: document date (by day), then `SavedAt` (the last-saved date inside the file), then
+`Revision` (Office `cp:revision`), then `SourceModifiedAt` / the bulk file's modified time, then length, then id.
+`VersionDetector.Reason()` names the deciding evidence, and each member's `History` lists all of it.
+
+### File dates (`Services/Documents/FileDates.cs`)
+
+`FileDates.Read(bytes, extension)` reads, from the decrypted stored bytes: PDF `/ModDate` (then `/CreationDate`, then
+XMP `xmp:ModifyDate`); Office `docProps/core.xml` `dcterms:modified` / `dcterms:created` and `cp:revision`; JPEG/TIFF
+EXIF DateTaken. Dates only – author and "last modified by" fields are never read. A date before 1990 or more than a
+day in the future is ignored, and it never throws. `LibraryService.Import` stores `SourceModifiedAt` (the file's
+last-write time), `SavedAt` and `Revision`; a library check back-fills them (`Database.SetFileDates`, which never
+overwrites a value with null). All three are information only and never become the document's date.
+
+## Library check (`Services/BulkImport/LibraryCheck.cs`, `Views/LibraryCheckWindow.cs`)
+
+A library check is `BulkImportService.CreateLibraryJob(docs, BulkOptions, name)` with `LibraryCheck = true`: an
+`ImportJob` that starts at `PreparingText` with one `ImportFile` per existing document. Extra options:
+
+- `Sections` – keys from `LibraryCheck.Sections` (null = all). `LibraryCheck.KindsFor` maps them to finding kinds
+  (`summary` and `conflict` are always kept). Findings of other kinds are dropped before
+  `Database.ReplaceFindings(docId, findings, kinds)`, which then supersedes only open findings of those kinds, so a
+  check of one section leaves another section's suggestions alone. The section list is part of the analysis
+  fingerprint, so changing sections re-reads a document. Categories alone use the quick (categories-only) reading.
+- `RunAi = false` – no AI. `SetAwaiting` adds CaseKeeper's own suggestions where the document has none of that kind:
+  `ComplaintRules.Suggest` (complaint record plus its complaint category), else `DocumentAnalyzer.RuleBasedCategory`.
+- `WriteOverview` – when the job completes, the UI writes the case overview (`Services/Ai/CaseOverview.cs`): one line
+  per document (title, category, date, its `summary` finding or description, clipped) plus a digest of approved
+  records, analysed with `prompt.report.overview` and saved as an `AiReport` of type *Case overview*. Consent and
+  masking are those of `AiService.AnalyseAsync`.
+- The text phase back-fills file dates first. On completion `librarycheck.last` is set; the start is audited as
+  "Library check: N document(s)". `LibraryCheck.Count` / `DescribeForAssistant` give counts only (no titles, names or
+  content) for the window, the Library check card and the help assistant's system prompt.
+
+## Complaints (`ComplaintRules.cs`, `FindingApprover`)
+
+- Rules: complaint wording (`DocumentAnalyzer.IsComplaintWording`) plus a known organisation (most specific first:
+  LGSCO, PHSO, Legal Ombudsman, JCIO, IOPC, SRA, Social Work England, Children's Commissioner, Cafcass Cymru,
+  Cafcass, HMCTS, MP, police, local authority). Reply wording sets `isResponse`. A reference must contain a digit.
+  `responseDue` only from an explicit "reply by <date>", or "within N working days" from the document date (weekends
+  skipped, flagged to check). Model "CaseKeeper rules", confidence 0.45–0.65.
+- AI: schema `bulk-schema-2` adds `responseDue`, `responseDueText`, `isResponse`, `contactDetails`, `allegedBy`,
+  `findingSought` and the `scottItem` kind; the validator requires `responseDue` to appear as a date in the text,
+  strips contact details for children and non-party kinds, and re-files a `scottItem` without allegation wording as
+  an issue.
+- Approval: a complaint matching an existing one (reference, then subject) becomes a *complaint-update*: links the
+  document, sets *Response Received* for a reply, appends the reply summary to Outcome, fills only empty fields, and
+  stores the previous values for Undo. A party matching an existing party becomes a *party-update* in the same way.
+  Approving a complaint also approves the document's open complaint-category suggestion when the document is still
+  Uncategorised (`FileWithComplaint`). `scottItem` creates a `ScottItem` with the next number and the evidence
+  reference "<title or exhibit> p.N".
 
 ### Trust signals (`FindingChecks.TrustSignals`)
 

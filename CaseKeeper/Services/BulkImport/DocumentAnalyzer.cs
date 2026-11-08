@@ -392,6 +392,9 @@ public sealed class DocumentAnalyzer
             case FindingKinds.Complaint when !ComplaintWords.IsMatch(evidence):
                 warnings.Add("Suggested as a complaint, but the wording isn't about a complaint, so it's here for you to check.");
                 return FindingKinds.Issue;
+            case FindingKinds.ScottItem when !AllegationWords.IsMatch($"{evidence} {r.Details.GetValueOrDefault("allegation")}"):
+                warnings.Add("Suggested for the Scott schedule, but the wording isn't an allegation, so it's here for you to check.");
+                return FindingKinds.Issue;
             // A timeline or chronology entry with no date at all can't go on a timeline
             case FindingKinds.TimelineEvent or FindingKinds.ChronologyEntry when string.IsNullOrWhiteSpace(r.Date) && string.IsNullOrWhiteSpace(r.DateText):
                 return null;
@@ -406,6 +409,15 @@ public sealed class DocumentAnalyzer
     private static readonly System.Text.RegularExpressions.Regex OrderWords = new(
         @"\b(order\w*|it is ordered|ordered that|the court (orders|directs)|judgment|undertaking|injunction|penal notice)\b",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Wording of an allegation: something someone is said to have done.</summary>
+    private static readonly System.Text.RegularExpressions.Regex AllegationWords = new(
+        @"\b(alleg\w*|accus\w*|claim\w*|assault\w*|abus\w*|threat\w*|harass\w*|stalk\w*|controlling|coerci\w*|violen\w*|hit|hits|hitting|" +
+        @"punch\w*|kick\w*|push\w*|shov\w*|slap\w*|grab\w*|strangl\w*|choke\w*|intimidat\w*|insult\w*|neglect\w*|withh[eo]ld\w*|breach\w*|" +
+        @"denied contact|stopped contact|took the child|removed the child|drunk|intoxicated)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public static bool IsComplaintWording(string text) => ComplaintWords.IsMatch(text ?? "");
 
     private static readonly System.Text.RegularExpressions.Regex ComplaintWords = new(
         @"\b(complain\w*|ombudsman|grievance|formal concern|stage (one|two|1|2)|escalat\w*)\b",
@@ -560,7 +572,8 @@ public sealed class DocumentAnalyzer
 
         // ---- names must be in the text too
         var details = new Dictionary<string, string>(r.Details);
-        foreach (var key in new[] { "name", "judge", "court", "venue", "representative", "recipient", "madeBy", "organisation", "caseNumber", "reference" })
+        foreach (var key in new[] { "name", "judge", "court", "venue", "representative", "recipient", "madeBy", "organisation", "caseNumber", "reference",
+                     "contactDetails", "allegedBy" })
         {
             if (!details.TryGetValue(key, out var v)) continue;
             if (source.TextAppears(v, 1, LastPage(source))) continue;
@@ -617,6 +630,28 @@ public sealed class DocumentAnalyzer
             warnings.Add($"A time ({f.TimeText}) was suggested but isn't written in the document, so it was left out.");
             f.TimeText = "";
         }
+        // Contact details are kept for professionals and organisations only, never for a child
+        if (r.RecordType == FindingKinds.Child && details.Remove("contactDetails"))
+            warnings.Add("Contact details for a child are never added.");
+        if (r.RecordType != FindingKinds.Party) details.Remove("contactDetails");
+
+        // A complaint's reply deadline has to be written in the document as a date; a rule ("within 20 working days")
+        // is kept as wording only, never worked out here
+        if (r.RecordType == FindingKinds.Complaint)
+        {
+            if (details.TryGetValue("responseDue", out var due))
+            {
+                var probe = new AiFinding();
+                ApplyDate(probe, due, details.GetValueOrDefault("responseDueText"), "exact", source, part, new List<string>());
+                if (probe.DateValue is { } ok && probe.DatePrecision == "exact") details["responseDue"] = ok.ToString("yyyy-MM-dd");
+                else { details.Remove("responseDue"); warnings.Add("A reply deadline was suggested but that date isn't written in the document, so it was left out."); }
+            }
+            if (details.TryGetValue("responseDueText", out var dueText) && !source.TextAppears(dueText, 1, LastPage(source))) details.Remove("responseDueText");
+            if (details.TryGetValue("isResponse", out var reply)) details["isResponse"] = reply.Trim().ToLowerInvariant() is "true" or "yes" ? "true" : "false";
+        }
+        else { details.Remove("responseDue"); details.Remove("responseDueText"); details.Remove("isResponse"); }
+        if (r.RecordType != FindingKinds.ScottItem) { details.Remove("findingSought"); }
+
         if (r.RecordType == FindingKinds.Contact && details.TryGetValue("contactOutcome", out var outcome))
             warnings.Add($"“{AnalysisSchema.Clip(outcome, 60)}” is the AI's reading of what happened at contact – check it against the document.");
 
@@ -646,7 +681,7 @@ public sealed class DocumentAnalyzer
         // ---- wording: allegations stay allegations
         var description = r.Description.Trim();
         if (!string.IsNullOrWhiteSpace(f.AssertedBy) && !description.StartsWith(f.AssertedBy, StringComparison.OrdinalIgnoreCase) &&
-            (r.DateRole == "incidentAlleged" || r.RecordType is FindingKinds.TimelineEvent or FindingKinds.ChronologyEntry or FindingKinds.Safeguarding))
+            (r.DateRole == "incidentAlleged" || r.RecordType is FindingKinds.TimelineEvent or FindingKinds.ChronologyEntry or FindingKinds.Safeguarding or FindingKinds.ScottItem))
             description = $"{f.AssertedBy} states: {char.ToLowerInvariant(description[0])}{description[1..]}";
         if (r.DateRole == "incidentAlleged" && string.IsNullOrWhiteSpace(f.AssertedBy) &&
             !description.StartsWith("It is alleged", StringComparison.OrdinalIgnoreCase))

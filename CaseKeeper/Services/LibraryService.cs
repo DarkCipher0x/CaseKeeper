@@ -397,6 +397,12 @@ public class LibraryService
         details.PageCount = FileKinds.IsImage(ext) || FileKinds.IsText(ext) || ext == ".docx" ? 1 : 0;
         details.OcrStatus = OcrService.CanExtract(ext) ? OcrStatus.Pending : OcrStatus.NotApplicable;
         if (string.IsNullOrWhiteSpace(details.Title)) details.Title = Path.GetFileNameWithoutExtension(sourcePath);
+        // Edit history, kept as information only (never the document's date): when the original file was last
+        // changed, and when the file itself says it was last saved, with its Office revision number
+        try { details.SourceModifiedAt ??= File.GetLastWriteTime(sourcePath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        var saved = Documents.FileDates.Read(bytes, ext);
+        details.SavedAt ??= saved.SavedAt;
+        details.Revision ??= saved.Revision;
         try { Db.AddDocument(details); }
         catch
         {

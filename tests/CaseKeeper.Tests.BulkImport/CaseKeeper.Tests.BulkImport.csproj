@@ -35,6 +35,7 @@
     <Compile Include="$(Src)Services\AppPackage.cs" />
     <Compile Include="$(Src)Services\Vault.cs" />
     <Compile Include="$(Src)Services\LibraryService.cs" />
+    <Compile Include="$(Src)Services\Documents\FileDates.cs" />
     <Compile Include="$(Src)Services\LibraryLock.cs" />
     <Compile Include="$(Src)Services\OcrService.cs" />
     <Compile Include="$(Src)Services\PdfRenderService.cs" />

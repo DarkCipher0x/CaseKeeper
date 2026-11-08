@@ -69,6 +69,42 @@ public static class GuideContent
             "- Choose the columns you want by right-clicking the column headings.\n\n" +
             "Your original files are never moved or changed. CaseKeeper keeps its own copy."),
 
+        new("app.librarycheck", "Using CaseKeeper", "Check my library: organise what you already have",
+            "library check organise organize existing documents whole library categorise duplicates versions latest edit last saved revision complaints scott schedule parties contacts timeline sections overview assistant rules without ai",
+            "**Check my library** runs the documents already in CaseKeeper through the same reading, organising and cross-checking as Bulk Case Import – with AI, or with CaseKeeper's own rules only. " +
+            "Open it with *Check library* in Documents, *Check my library…* in Import review or on the Case map, or **Ctrl+K**.\n\n" +
+            "## Choices\n\n" +
+            "- **Which documents:** all of them, only those not yet categorised, or only those not organised before.\n" +
+            "- **Use AI:** your local AI, or the cloud AI you chose in *Settings → AI* (with the usual *Before anything is sent* screen and masking). Without AI, CaseKeeper's own rules still suggest categories and complaint records, and the copies and versions check always runs.\n" +
+            "- **Read the text** of documents that don't have it yet (slower for scans). Untick it to leave those out.\n" +
+            "- **What to fill in:** categories; parties and children (with representatives, and contact details for professionals and organisations – never for a child); hearings, orders and directions; timeline and chronology; actions and deadlines; the contact log; complaints; the Scott schedule; safeguarding; missing documents and issues. Your choice is remembered. A short summary of each document is always kept.\n" +
+            "- **Write a case overview** when it finishes (uses AI).\n\n" +
+            "## What happens\n\n" +
+            "#. CaseKeeper reads the dates saved inside each file (when a PDF or Word file was last saved, and Word's revision number) for documents imported before it did so. Dates only – never names.\n" +
+            "#. It reads any missing text, then the AI (or the rules) suggest what each document tells you, for the sections you chose.\n" +
+            "#. It cross-checks everything and compares the whole library for copies and versions.\n" +
+            "#. **Import review** opens, with a *Library check* card at the top of *Summary* listing what's waiting, each line a link. Nothing changes until you approve it.\n\n" +
+            "## Complaints\n\n" +
+            "Complaint letters and replies are recognised with or without AI: complaint wording plus an organisation CaseKeeper knows (Cafcass, HMCTS, the police, a council, an MP, an ombudsman, the JCIO, the SRA and others). " +
+            "The suggestion gives the organisation, any reference, the date, and a reply deadline only when the letter states one – \"within 20 working days\" is worked out from the letter's date, skipping weekends, and marked for you to check because bank holidays aren't known. " +
+            "Approving a complaint also files its document under the matching complaint category if it's still Uncategorised. " +
+            "A **reply** to a complaint already in *Complaints* is added to it instead of making a second one: the document is linked, the status becomes *Response Received*, the reply's summary goes into *Outcome*, and only empty fields are filled. You see exactly what will change first, and *Undo* restores the previous values.\n\n" +
+            "## Parties and the Scott schedule\n\n" +
+            "Someone already in *Parties* isn't added twice: the suggestion fills only their empty fields. Allegations become *Scott schedule* suggestions – who alleges it, what is alleged, when, and the document and page relied on – recorded as what someone says, never as fact.\n\n" +
+            "## Which is the latest edit?\n\n" +
+            "In *Duplicates & versions*, the newest copy is chosen by the document's own date, then when it was last saved inside the file, then its Word revision, then when the file last changed. Each copy has an *Edit history* line, and you can compare two **side by side** or **move the older ones to Deleted items** (restorable for as long as Deleted items keeps them).\n\n" +
+            "## The help assistant\n\n" +
+            "The help assistant knows how many documents are uncategorised, how many suggestions are waiting, and similar counts – numbers only, never titles, names or content – so it can suggest your next step with a button. It never changes anything itself."),
+
+        new("app.casemap", "Using CaseKeeper", "Case map and case overview",
+            "case map matrix overview laid out layout big picture grid timeline periods months quarters years category groups parties people records hearings orders complaints deadlines uncategorised undated",
+            "The **Case map** (sidebar, under OVERVIEW) shows how your case is laid out.\n\n" +
+            "- **Case overview** at the top: an AI-written summary of the whole case – who's involved, what has happened, where things stand, what's coming up and outstanding, the key issues and the gaps. It's written from each document's short summary and your records, not the documents' full text, and saved in *AI analysis → Reports*. Click *Write case overview* or *Refresh overview*. Without AI, the record counts are shown instead.\n" +
+            "- **The matrix:** one row per category group (or per party, with *Rows*), one column per month, quarter or year (chosen automatically from your dates, or by you). Darker cells hold more documents. Click any number to see those documents in *Documents*. *Uncategorised* and *Undated* show what still needs organising.\n" +
+            "- **Case records** on the same time line: hearings, orders, complaints, Scott schedule items and deadlines. Hover for the list; click to open the screen.\n" +
+            "- **People:** each party, with how many documents are linked to them and how many mention them.\n\n" +
+            "Everything on the Case map is worked out on this PC; only the overview uses AI, with the same consent and masking as the rest of CaseKeeper."),
+
         new("app.bulkimport", "Using CaseKeeper", "Bulk Case Import and Import review",
             "bulk import folder subfolders directory existing case organise ai suggestions review approve reject unknown confidence duplicates pause resume ollama speed slow fast careful model gemma graphics card gpu battery",
             "**Bulk Case Import** brings in a whole folder of case papers at once – including every subfolder – and can ask your local AI to suggest how to organise it. " +
@@ -103,8 +139,8 @@ public static class GuideContent
             "In *Review options → AI SERVICE* (or *Settings → AI*) you can have the import read by **Anthropic (Claude)**, **OpenAI (GPT)**, or either on **Microsoft Foundry** in your own Azure subscription. They're much faster on large folders; the default is the quick, low-cost model at low effort. " +
             "Before anything is sent, **Before anything is sent** shows the address it goes to, what will be masked, sensitive subjects in the batch, and any documents that couldn't be masked well – for those you choose to read them with the local AI, skip them, or send them anyway. If you don't agree, nothing is sent and the documents wait. See *Cloud AI, masking and what's sent*.\n\n" +
             "## Duplicates and versions\n\n" +
-            "*Import review → Duplicates & versions* groups copies and versions of the same document by comparing the words inside them, so a PDF and a Word copy of one letter, or a draft and its final version, are found. The newest is shown first with the reason (its date, then when the file was last changed). **What changed** compares any version with the newest sentence by sentence. " +
-            "**Keep newest, tag the others as older**, **Keep all, link as versions** or **Not related** – nothing is deleted, and each choice can be undone.\n\n" +
+            "*Import review → Duplicates & versions* groups copies and versions of the same document by comparing the words inside them, so a PDF and a Word copy of one letter, or a draft and its final version, are found. The newest is shown first with the reason (its date, then when it was last saved inside the file, its Word revision, then when the file was last changed), with an *Edit history* line for each copy. **What changed** compares any version with the newest sentence by sentence, and **Side by side** shows two in columns. " +
+            "**Keep newest, tag the others as older**, **Keep all, link as versions**, **Not related**, or **Move older to Deleted items…** (restorable from Deleted items) – each choice can be undone. To check documents already in the library, use *Check my library*.\n\n" +
             "## If the AI isn't available\n\n" +
             "The import still finishes. Documents wait as *Waiting – AI not available*, and CaseKeeper's own rules still suggest categories from form codes. Start Ollama (or, for a cloud AI, check you're online), then use *Analyse N waiting* in Import review. Failed analyses can be retried the same way.\n\n" +
             "## Privacy\n\n" +

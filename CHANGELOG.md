@@ -14,6 +14,71 @@ folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\Cas
 
 ---
 
+## v0.7.0 — 8 November 2026
+
+A feature release. **Check my library** organises everything already in CaseKeeper in one go – with AI or with
+CaseKeeper's own rules – and fills in the case sections you choose. Complaints are filed and filled in, replies update
+the complaint they answer, *Duplicates & versions* knows which copy is the latest edit, and the new **Case map** shows
+how your case is laid out. Upgrade over any earlier version: nothing you already have is changed, and nothing new is
+added to your case until you approve it. From 0.5.0, *Settings → Updates* can install it for you.
+
+### New
+- **Check my library** (*Check library* on Documents, *Check my library…* in Import review or on the Case map, or
+  Ctrl+K). Check all documents, only uncategorised ones, or only those not organised before; with AI (local or the
+  cloud AI you chose, with the usual review and masking) or without it. Tick the sections to fill: categories, parties
+  & children, hearings/orders/directions, timeline & chronology, actions & deadlines, contact log, complaints, Scott
+  schedule, safeguarding, missing documents & issues. Everything waits in *Import review*, which opens on a *Library
+  check* card listing what was found, each line a link.
+- **Complaints filed and filled in**, with or without AI. Complaint letters and replies to Cafcass, HMCTS, the police,
+  councils, MPs, the ombudsmen, the JCIO, the SRA and others are recognised; the suggestion gives the organisation,
+  reference, date, and a reply deadline only when the letter states one ("within 20 working days" is worked out and
+  marked to check). Approving a complaint also files its document under the matching complaint category.
+- **Replies update the complaint they answer** instead of creating a second one: the reply is linked, the status
+  becomes *Response Received*, only empty fields are filled, you see what will change first, and *Undo* restores it.
+  Parties already in *Parties* are filled in the same way rather than added twice (contact details for professionals
+  and organisations only, never for a child).
+- **Scott schedule suggestions** from allegations in your documents: who alleges it, what, when, the finding sought
+  and the page relied on – recorded as what someone says, never as fact. New *Scott schedule* section in Import review.
+- **Which is the latest edit.** CaseKeeper now reads the date each PDF and Word file says it was last saved, and
+  Word's revision number (dates and numbers only, never names), and records the file's own last-changed date for
+  ordinary imports. *Duplicates & versions* ranks the newest by the document's date, then last saved, then revision,
+  then file changed, shows an *Edit history* line for each copy, compares two **side by side**, and can **move the
+  older copies to Deleted items** (restorable, audited, undoable). A library check fills these dates in for documents
+  imported before 0.7.0.
+- **Case map** (sidebar, under Overview): a matrix of your documents by category group (or party) against months,
+  quarters or years, with *Uncategorised* and *Undated* showing what still needs organising; click any number to see
+  those documents. Hearings, orders, complaints, Scott schedule items and deadlines on the same time line, and the
+  people involved with how many documents relate to each.
+- **Case overview**: an AI-written summary of the whole case – who's involved, the history, where it stands, what's
+  coming up and outstanding, the key issues and the gaps – from each document's summary and your records (not the
+  full text). Shown on the Case map and saved in *AI analysis → Reports*; its prompt is editable like the others.
+- **The help assistant helps you organise.** It's told counts about your library (documents, uncategorised, waiting
+  suggestions, whether a check has run – never titles, names or content) and suggests the next step with a button.
+  New directions for checking the library, the Case map, complaints and "what should I organise next?".
+
+### Improved
+- The sidebar's privacy status now says **Cloud AI on · Anthropic** (or *OpenAI*, *Foundry*) in amber whenever the app
+  or Bulk Case Import uses a cloud AI, and **Local only · nothing uploaded** in green otherwise. Hover for what is sent
+  and whether masking is on; click it to open *Settings → AI*.
+- The AI is asked for complaint reply deadlines, whether a document is the organisation's reply, contact details for
+  professionals, and Scott schedule items (schema `bulk-schema-2`; changed documents are re-read). A reply deadline
+  must appear as a date in the document, and contact details are never kept for a child.
+
+### Components
+- No changes. .NET 10.0.14. No known vulnerabilities in any package.
+
+### For developers
+- New: `Services/BulkImport/LibraryCheck.cs`, `ComplaintRules.cs`, `Services/Ai/CaseOverview.cs`,
+  `Services/Ai/PrivacyStatus.cs`, `Services/Documents/FileDates.cs`, `Views/LibraryCheckWindow.cs`,
+  `Views/Modules/CaseMapView.cs`. `BulkOptions` gains `Sections`, `LibraryCheck` and `WriteOverview`;
+  `Database.ReplaceFindings` can be scoped to kinds; Documents gains `SavedAt` and `Revision` columns
+  (added automatically). See `docs/BULK-IMPORT.md`.
+- New tests (synthetic data only): library check with and without AI, section scoping, complaint rules, the reply
+  merge and its undo, the counts-only assistant state, latest-edit ranking, file dates, the new columns, and the new
+  help directions and guide articles.
+
+---
+
 ## v0.6.2 — 8 November 2026
 
 A maintenance release with a correction to the patch notes. Upgrade over any earlier version: nothing you already

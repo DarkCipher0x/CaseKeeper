@@ -129,6 +129,7 @@ public partial class App : Application
 
         ApplyStoredPreferences();
         StartupHousekeeping(failedUnlocks);
+        PrivacyStatus.Start();
 
         ThemeManager.Apply(ThemeManager.Parse(Library.Db.GetSetting("theme", "Dark")));
         // Follow along if Windows is switched between light and dark while we're running

@@ -58,7 +58,7 @@ The sidebar groups the screens:
 
 | Group | Screens |
 |---|---|
-| Overview | Dashboard · Case & hearings |
+| Overview | Dashboard · Case map · Case & hearings |
 | Papers | Documents · Import review · Search · Parties |
 | Track | Timeline · Directions & tasks · Contact log · Complaints · Costs\* · Scott schedule\* |
 | Produce | Letters & templates · Bundles & reports · AI analysis\* · Exports\* |
@@ -73,6 +73,29 @@ can always be reached with **Ctrl+K**.
   document title, a category or form code ("C1A"), a party, a guide article or a question – and press Enter.
 - **Right-click** almost anything for everything you can do with it.
 - **F1** opens the guide at the help for the screen you're on.
+
+Under the sidebar, the privacy status shows where your AI runs: **● Local only · nothing uploaded** (green) when no
+cloud AI is chosen, or **● Cloud AI on · Anthropic** (or *OpenAI*, *Foundry*) in amber when the app or Bulk Case Import
+uses one. Hover for what is sent and whether masking is on; click it to open *Settings → AI*.
+
+### Case map
+
+**Case map** (sidebar, under Overview) shows how your case is laid out:
+
+- **Case overview** at the top – an AI-written summary of the whole case: who's involved, what has happened, where
+  things stand, what's coming up and outstanding, the key issues and the gaps. It's written from each document's
+  short summary and your records (never the documents' full text) and saved in *AI analysis → Reports*. Click
+  **Write case overview** or **Refresh overview**. Without AI, the record counts are shown instead.
+- **The matrix** – one row per category group (or per party, with *Rows*), one column per month, quarter or year
+  (chosen from your dates, or by you with *Periods*), plus *Undated* and *Total*. Darker cells hold more documents.
+  **Click any number** to see those documents in Documents. The *Uncategorised* row and *Undated* column show what
+  still needs organising. The party box shows one party's documents only.
+- **Case records** on the same time line: hearings, orders, complaints, Scott schedule items and deadlines. Hover
+  for the list; click to open the screen.
+- **People** – each party, with how many documents are linked to them and how many mention their name. Click to see
+  their documents.
+
+Everything except the overview is worked out on your PC.
 
 ## 3. Documents and categories
 
@@ -114,6 +137,8 @@ scan again; check it hasn't changed; see its full history; delete.
 it's removed for good. Right-click to restore or delete permanently.
 
 ## 4. Bulk Case Import and Import review
+
+To organise documents that are **already in CaseKeeper**, use [Check my library](#check-my-library) below.
 
 **Bulk Case Import** brings in a whole folder of case papers at once – every subfolder included – and can ask your
 local AI to suggest how to organise it. Open it with **Import folder** on the Documents screen, **Import a whole
@@ -235,13 +260,45 @@ documents, by comparing the words inside them – not just the files. So it find
 - **Same content** – for example a PDF and a Word copy of one letter;
 - **Versions** – a draft and its final version, or a statement with later edits.
 
-Each group shows the **newest first**, with the reason (*dated 3 Oct 2026*, or *last changed most recently* when no
-date is written in the documents), and for each older one what the newest added or removed. **What changed** opens
-a sentence-by-sentence comparison: added text in green, removed text struck through in red.
+Each group shows the **newest first**, with the reason, and for each older one what the newest added or removed.
+The latest edit is decided by, in order: the date written in the document; when the file says it was **last saved**
+(stored inside PDF and Word files); the Word **revision** number; when the file was last changed; then length. Each
+copy has an **Edit history** line – *dated · last saved · revision · file changed · added to CaseKeeper*. Documents
+imported before 0.7.0 get their saved dates when you run [Check my library](#check-my-library).
+
+**What changed** opens a sentence-by-sentence comparison (added text in green, removed text struck through in red);
+**Side by side** shows the newest and another copy in two columns.
 
 Then choose **Keep newest, tag the others as older** (tags *Latest version* and *Older version*), **Keep all, link as
-versions** (tag *Version*) or **Not related**. **Nothing is ever deleted**, every choice is in the audit trail, and
-**Undo** reverses it. Very short documents (a few words) aren't compared.
+versions** (tag *Version*), **Not related**, or **Move older to Deleted items…** – after you confirm, the older copies
+go to *Deleted items*, where they can be restored for as long as Deleted items keeps them (Settings). Every choice is
+in the audit trail, and **Undo** reverses it. Very short documents (a few words) aren't compared.
+
+### Check my library
+
+**Check my library** runs the documents already in CaseKeeper through the same reading, organising and checking as
+Bulk Case Import – with AI, or with CaseKeeper's own rules only. Open it with **Check library** on the Documents
+screen, **Check my library…** in Import review or on the Case map, or **Ctrl+K** → *check library*.
+
+| Choice | What it does |
+|---|---|
+| Which documents | All documents, only those not yet categorised, or only those not organised before |
+| Use AI | Your local AI, or the cloud AI chosen in *Settings → AI* (with the usual review before anything is sent, and masking). Off: CaseKeeper's own rules still suggest categories and complaint records |
+| Read the text of documents that don't have it yet | On by default. Off leaves those documents out |
+| What to fill in | Categories · Parties & children · Hearings, orders & directions · Timeline & chronology · Actions & deadlines · Contact log · Complaints · Scott schedule · Safeguarding · Missing documents & issues. Remembered for next time |
+| Write a case overview when it finishes | Uses AI; the overview appears on the Case map and in *AI analysis → Reports* |
+
+Click **Start check**. CaseKeeper first records the dates saved inside each file (dates and revision numbers only,
+never names), reads any missing text, suggests what each document tells you for the sections you chose, cross-checks
+everything, and compares the whole library for copies and versions. **Import review** opens with a **Library check**
+card at the top of *Summary*: what's waiting, each line a link, plus *Open the Case map* and *Write case overview*.
+**Nothing changes until you approve it.**
+
+- **Parties** already in *Parties* aren't added twice: the suggestion fills only their empty fields
+  (representative, date of birth, and contact details for professionals and organisations – never for a child).
+- **Allegations** become *Scott schedule* suggestions: who alleges it, what is alleged, when, the finding sought and
+  the document and page relied on – always recorded as what someone says, never as fact.
+- **Complaints** – see [Complaints](#11-complaints).
 
 ### Treat with care
 
@@ -354,6 +411,19 @@ Keep track of complaints and letters to your MP, Cafcass, the ombudsmen, HMCTS, 
 references and reply-due dates. Overdue replies are flagged. Right-click to set the status, **write a letter for this
 complaint** (starts the right template), build a complaint pack, or see its history.
 
+**Filed and filled in for you.** Bulk Case Import and Check my library recognise complaint letters and replies, with
+or without AI: complaint wording plus an organisation CaseKeeper knows (Cafcass, HMCTS, the police, a council, an MP,
+the ombudsmen, the JCIO, the SRA, Social Work England and others). Each suggestion in *Import review → Complaints*
+gives the organisation, any reference, the date, and a reply deadline **only when the letter states one**. "Within 20
+working days" is worked out from the letter's date, skipping weekends, and marked for you to check (bank holidays
+aren't known). Approving a complaint also files its document under the matching complaint category (for example
+*Cafcass complaint*) if it is still Uncategorised.
+
+**Replies update the complaint.** A reply to a complaint already here (matched by reference or subject) is added to it
+instead of creating a second one: the reply is linked, the status becomes *Response Received*, its summary is added to
+*Outcome*, and only empty fields (reference, recipient, dates) are filled – nothing already written is changed. You see
+exactly what will change before you approve, and **Undo** restores the earlier values.
+
 ## 12. Costs and the Scott schedule
 
 **Costs & expenses** (Professional mode): date, category, description, amount, who was paid, how, reference, Help
@@ -361,7 +431,8 @@ with Fees, and whether you might claim it back. Totals by category, and exports 
 
 **Scott schedule** (Professional mode): numbered allegations with date (or approximate date), who alleges it, the
 allegation, the response, evidence references (bundle pages), finding sought and status. Renumber in one click and
-export landscape for the court. Only prepare one if the court directs it.
+export landscape for the court. Only prepare one if the court directs it. Check my library (with *Scott schedule*
+ticked) suggests items from allegations in your documents, for you to approve in *Import review → Scott schedule*.
 
 ## 13. Letters, templates and letterheads
 
@@ -546,7 +617,10 @@ numbered steps with the exact names of the buttons and menus, and **buttons that
 
 - It uses your local AI and is given a complete map of CaseKeeper's screens, buttons and menus plus the relevant
   parts of this guide, so its directions are for things that really exist.
-- **Only your question is sent** to your AI – never anything about your case, documents or parties.
+- **Only your question is sent** to your AI, with a few **counts** about your library (how many documents, how
+  many are uncategorised, how many suggestions are waiting, whether a library check has run) – never a title, name or
+  anything from your documents. The counts let it suggest your next organising step, with a button.
+- It never changes anything itself: every change happens in the normal screens and through Import review.
 - Ask follow-ups ("and how do I export it?"); *New conversation* starts again. Suggested questions get you started.
 - Without AI, it still shows the matching help sections and screen buttons.
 - From anywhere: press **Ctrl+K**, type your question and choose *Ask the help assistant*.

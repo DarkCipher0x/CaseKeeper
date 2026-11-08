@@ -21,6 +21,7 @@
     <Compile Include="$(Src)Models\CaseRecords.cs" />
     <Compile Include="$(Src)Services\Deadlines.cs" />
     <Compile Include="$(Src)Services\Ai\HelpKnowledge.cs" />
+    <Compile Include="$(Src)Services\Guide\GuideContent.cs" />
     <None Include="$(MSBuildThisFileDirectory)..\..\USER-GUIDE.md" Link="USER-GUIDE.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

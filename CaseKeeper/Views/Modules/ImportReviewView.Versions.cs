@@ -48,7 +48,7 @@ public partial class ImportReviewView
             var modified = Db.Query<ImportFile>("DocumentId IS NOT NULL").GroupBy(f => f.DocumentId!.Value)
                 .ToDictionary(g => g.Key, g => g.Max(f => f.SourceModifiedAt));
             var inputs = docs.Select(d => new VersionInput(d.Id, d.Title, string.Join("\n", Db.GetAllPageText(d.Id).OrderBy(p => p.Key).Select(p => p.Value)),
-                d.DocumentDate, modified.GetValueOrDefault(d.Id) ?? d.DateReceived, d.FileHash)).ToList();
+                d.DocumentDate, d.SourceModifiedAt ?? modified.GetValueOrDefault(d.Id), d.FileHash, d.SavedAt, d.Revision, d.ImportedAt)).ToList();
             _versions = await Task.Run(() => VersionDetector.Find(inputs));
             _versionsSignature = signature;
             AppLog.Info("Review", $"Version check: {_versions.Count} group(s) among {docs.Count} documents");
@@ -115,7 +115,10 @@ public partial class ImportReviewView
             var id = m.DocumentId;
             buttons.Children.Add(Ui.Button("Open", null, (_, _) => Shell.OpenDocumentById(id)));
             if (!m.Newest && g.Kind != VersionKind.Exact)
+            {
                 buttons.Children.Add(Ui.Button("What changed", null, (_, _) => ShowChanges(m, newest), tooltip: "Compare this with the newest, sentence by sentence"));
+                buttons.Children.Add(Ui.Button("Side by side", null, (_, _) => ShowSideBySide(m, newest), tooltip: "This one and the newest in two columns, changes highlighted"));
+            }
             row.Children.Add(buttons);
             var text = new StackPanel();
             text.Children.Add(new TextBlock
@@ -124,10 +127,10 @@ public partial class ImportReviewView
                 TextTrimming = TextTrimming.CharacterEllipsis
             });
             var info = new List<string>();
-            if (m.EffectiveDate is { } d) info.Add($"{m.DateSource} {d:d MMM yyyy}");
             if (!m.Newest) info.Add($"{m.Similarity:P0} the same wording");
             if (m.Diff != null) info.Add(m.Diff.Describe());
             if (info.Count > 0) text.Children.Add(Ui.Muted(string.Join(" · ", info), 11.5));
+            if (m.History.Length > 0) text.Children.Add(Ui.Muted("Edit history: " + m.History, 11.5));
             row.Children.Add(text);
             sp.Children.Add(row);
         }
@@ -139,10 +142,15 @@ public partial class ImportReviewView
                 tooltip: $"Tags the newest “{LatestTag}” and the others “{OlderTag}”. Nothing is deleted."));
             actions.Children.Add(Ui.Button("Keep all, link as versions", "", (_, _) => DecideVersions(g, "linked"), tooltip: $"Tags them all “{VersionTag}”"));
             actions.Children.Add(Ui.Button("Not related", "", (_, _) => DecideVersions(g, "dismissed"), tooltip: "Stop showing this group"));
+            actions.Children.Add(Ui.Button("Move older to Deleted items…", "", (_, _) => DeleteOlder(g),
+                tooltip: "Keeps the newest and moves the others to Deleted items, where you can restore them"));
         }
         else
         {
-            actions.Children.Add(Ui.Muted(decided switch { "older" => "Older ones tagged.", "linked" => "Linked as versions.", _ => "Marked as not related." }, 12));
+            actions.Children.Add(Ui.Muted(decided switch
+            {
+                "older" => "Older ones tagged.", "linked" => "Linked as versions.", "deleted" => "Older ones moved to Deleted items.", _ => "Marked as not related."
+            }, 12));
             actions.Children.Add(Ui.Button("Undo", "", (_, _) => UndoVersions(g, decided)));
         }
         sp.Children.Add(actions);
@@ -185,8 +193,31 @@ public partial class ImportReviewView
         Reload();
     }
 
+    /// <summary>Keeps the newest and moves the others to Deleted items (recoverable), after asking.</summary>
+    private void DeleteOlder(VersionGroup g)
+    {
+        var newest = g.Members[0];
+        var older = g.Members.Skip(1).ToList();
+        var list = string.Join("\n", older.Select(m => "  •  " + m.Title));
+        if (MessageBox.Show(Ui.Owner(this), $"Keep “{newest.Title}” and move {(older.Count == 1 ? "this one" : $"these {older.Count}")} to Deleted items?\n\n{list}\n\n" +
+                $"You can restore them from Documents → Deleted items for {Db.GetSetting("bin.days", "30")} days. Your original files are not affected.",
+                "Move older copies to Deleted items", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        foreach (var m in older) Db.SoftDeleteDocument(m.DocumentId);
+        Retag(newest.DocumentId, t => t.Append(LatestTag).ToList());
+        var all = VersionDecisions();
+        all[g.Key] = "deleted";
+        SaveDecisions(all);
+        Db.Audit("document.versions", "document", newest.DocumentId, $"Kept “{newest.Title}” and moved {older.Count} older cop{(older.Count == 1 ? "y" : "ies")} to Deleted items",
+            string.Join("\n", older.Select(m => $"#{m.DocumentId} {m.Title}")));
+        Shell.RefreshAll();
+        Reload();
+    }
+
     private void UndoVersions(VersionGroup g, string decision)
     {
+        if (decision == "deleted")
+            foreach (var m in g.Members.Skip(1))
+                if (Db.GetDocument(m.DocumentId) is { DeletedAt: not null }) Db.RestoreDocument(m.DocumentId);
         foreach (var m in g.Members) Retag(m.DocumentId, t => t.Where(x => !x.Equals(OlderTag, StringComparison.OrdinalIgnoreCase)
             && !x.Equals(LatestTag, StringComparison.OrdinalIgnoreCase) && !(decision == "linked" && x.Equals(VersionTag, StringComparison.OrdinalIgnoreCase))).ToList());
         var all = VersionDecisions();
@@ -230,6 +261,49 @@ public partial class ImportReviewView
             Title = "What changed", Width = 820, Height = 680, Owner = Ui.Owner(this), WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Style = (Style)Application.Current.FindResource("AppWindow"),
             Content = new FlowDocumentScrollViewer { Document = doc, IsToolBarVisible = false }
+        };
+        w.SetResourceReference(Window.ForegroundProperty, "TextBrush");
+        w.Show();
+    }
+
+    /// <summary>The older document and the newest in two columns: removed text on the left, added on the right.</summary>
+    private void ShowSideBySide(VersionMember older, VersionMember newest)
+    {
+        string Text(long id) => string.Join("\n", Db.GetAllPageText(id).OrderBy(p => p.Key).Select(p => p.Value));
+        var changes = VersionDetector.Compare(Text(older.DocumentId), Text(newest.DocumentId));
+        FlowDocument Column(string heading, VersionDetector.LineChange shown, string brush)
+        {
+            var doc = new FlowDocument { PagePadding = new Thickness(14), FontSize = 12.5 };
+            doc.SetResourceReference(FlowDocument.ForegroundProperty, "TextBrush");
+            doc.Blocks.Add(new Paragraph(new Run(heading)) { FontWeight = FontWeights.SemiBold, FontSize = 13 });
+            foreach (var (change, text) in changes)
+            {
+                if (change != VersionDetector.LineChange.Same && change != shown) continue;
+                Inline run = new Run(text);
+                if (change == shown) run = Mark(run, brush);
+                doc.Blocks.Add(new Paragraph(run) { Margin = new Thickness(0, 2, 0, 2) });
+            }
+            return doc;
+        }
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        var left = new FlowDocumentScrollViewer { Document = Column($"Older: {older.Title}\n{older.History}", VersionDetector.LineChange.Removed, "DangerSoft"), IsToolBarVisible = false };
+        var right = new FlowDocumentScrollViewer { Document = Column($"Newest: {newest.Title}\n{newest.History}", VersionDetector.LineChange.Added, "SuccessSoft"), IsToolBarVisible = false };
+        AutomationProperties.SetName(left, "Older version");
+        AutomationProperties.SetName(right, "Newest version");
+        var line = new Border();
+        line.SetResourceReference(Border.BackgroundProperty, "BorderBrush");
+        Grid.SetColumn(line, 1);
+        Grid.SetColumn(right, 2);
+        grid.Children.Add(left);
+        grid.Children.Add(line);
+        grid.Children.Add(right);
+        var w = new Window
+        {
+            Title = "Side by side", Width = 1180, Height = 720, Owner = Ui.Owner(this), WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Style = (Style)Application.Current.FindResource("AppWindow"), Content = grid
         };
         w.SetResourceReference(Window.ForegroundProperty, "TextBrush");
         w.Show();

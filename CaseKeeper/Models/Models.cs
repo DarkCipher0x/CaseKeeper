@@ -185,6 +185,12 @@ public class CaseDocument : Observable
     /// </summary>
     public DateTime? SourceModifiedAt { get; set; }
 
+    /// <summary>When the file itself says it was last saved (PDF ModDate, Office "modified", photo taken). Information only.</summary>
+    public DateTime? SavedAt { get; set; }
+
+    /// <summary>The Office revision number (how many times a Word/Excel/PowerPoint file was saved), when the file has one.</summary>
+    public int? Revision { get; set; }
+
     public string SourceFolder
     {
         get

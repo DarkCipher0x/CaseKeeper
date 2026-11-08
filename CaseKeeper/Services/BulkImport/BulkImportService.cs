@@ -18,11 +18,18 @@ public sealed class BulkOptions
     public bool RunAi { get; set; } = true;
     public DuplicatePolicy Duplicates { get; set; } = DuplicatePolicy.SkipAndRecord;
     public bool Remember { get; set; } = true;
+    /// <summary>Library check: which sections to fill (see <see cref="LibraryCheck.Sections"/>). Null fills everything.</summary>
+    public List<string> Sections { get; set; }
+    /// <summary>This job is a Library check of documents already in the library.</summary>
+    public bool LibraryCheck { get; set; }
+    /// <summary>Write a case overview (AI → Reports) when the check finishes.</summary>
+    public bool WriteOverview { get; set; }
 
     public string Describe() =>
         $"Subfolders: {(Scan.IncludeSubfolders ? "yes" : "no")} · hidden files: {(Scan.IncludeHiddenFiles ? "yes" : "no")} · " +
         $"links followed: {(Scan.FollowLinks ? "yes" : "no")} · folder paths kept: {(PreserveStructure ? "yes" : "no")} · " +
-        $"folder mapping: {FolderMapping} · duplicates: {Duplicates} · text reading: {(RunOcr ? "yes" : "later")} · AI: {(RunAi ? "yes" : "no")}";
+        $"folder mapping: {FolderMapping} · duplicates: {Duplicates} · text reading: {(RunOcr ? "yes" : "later")} · AI: {(RunAi ? "yes" : "no")}" +
+        (Sections == null ? "" : $" · sections: {string.Join(", ", Sections)}") + (WriteOverview ? " · case overview: yes" : "");
 }
 
 public sealed class BulkProgress
@@ -224,12 +231,19 @@ public sealed class BulkImportService
     }
 
     /// <summary>A job that analyses documents already in the library (from the Documents right-click menu).</summary>
-    public ImportJob CreateLibraryJob(IReadOnlyList<CaseDocument> docs)
+    public ImportJob CreateLibraryJob(IReadOnlyList<CaseDocument> docs) => CreateLibraryJob(docs, new BulkOptions(), null);
+
+    /// <summary>
+    /// A job for documents already in the library, with the chosen options: a Library check (any number of documents,
+    /// with or without AI, filling only the chosen sections) or "Organise with AI" on a selection.
+    /// </summary>
+    public ImportJob CreateLibraryJob(IReadOnlyList<CaseDocument> docs, BulkOptions options, string name)
     {
+        options ??= new BulkOptions();
         var job = new ImportJob
         {
-            RootName = docs.Count == 1 ? docs[0].Title : $"{docs.Count} documents from the library", RootPath = "",
-            OptionsJson = JsonSerializer.Serialize(new BulkOptions()), PhaseValue = ImportPhase.PreparingText, StateValue = ImportJobState.Active
+            RootName = name ?? (docs.Count == 1 ? docs[0].Title : $"{docs.Count} documents from the library"), RootPath = "",
+            OptionsJson = JsonSerializer.Serialize(options), PhaseValue = ImportPhase.PreparingText, StateValue = ImportJobState.Active
         };
         Db.SaveQuiet(job);
         Db.SaveQuietBatch(docs.Select(d => new ImportFile
@@ -238,7 +252,11 @@ public sealed class BulkImportService
             SizeBytes = d.FileSize, ContentHash = d.FileHash, StatusValue = ImportFileStatus.Imported, DocumentId = d.Id,
             TextValue = TextState.Waiting, AnalysisValue = AnalysisState.Queued, Included = true
         }).ToList());
-        Db.Audit("bulkimport.start", "bulk import", job.Id, $"Asked the AI to organise {docs.Count} document(s) already in the library", "");
+        if (options.LibraryCheck)
+            Db.Audit("bulkimport.start", "bulk import", job.Id, $"Library check: {docs.Count} document(s) ({(options.RunAi ? "with AI" : "CaseKeeper rules only")})",
+                options.Describe());
+        else
+            Db.Audit("bulkimport.start", "bulk import", job.Id, $"Asked the AI to organise {docs.Count} document(s) already in the library", "");
         return job;
     }
 
@@ -329,6 +347,7 @@ public sealed class BulkImportService
                 SetPhase(job, ImportPhase.Review);
             }
             job.StateValue = ImportJobState.Completed;
+            if (options.LibraryCheck) Db.SetSetting(LibraryCheck.LastRunSetting, DateTime.Now.ToString("o", System.Globalization.CultureInfo.InvariantCulture));
             var counts = Db.CountImportFiles(job.Id);
             Db.Audit("bulkimport.finish", "bulk import", job.Id, $"Finished the bulk import of “{job.RootName}”", Summarise(counts));
             AppLog.Info("BulkImport", $"Job #{job.Id} finished");
@@ -523,8 +542,33 @@ public sealed class BulkImportService
     }
 
     // ------------------------------------------------------------------ phase 2: text
+    /// <summary>
+    /// Library check: records the dates stored inside each file (last saved, Office revision) for documents imported
+    /// before CaseKeeper read them, so Duplicates &amp; versions can tell which copy is the latest edit. Dates only.
+    /// </summary>
+    private void BackfillFileDates(ImportJob job, CancellationToken ct)
+    {
+        int filled = 0;
+        foreach (var f in Db.Query<ImportFile>("JobId=$j AND DocumentId IS NOT NULL", ("$j", job.Id)))
+        {
+            ct.ThrowIfCancellationRequested();
+            var doc = Db.GetDocument(f.DocumentId!.Value);
+            if (doc == null || doc.DeletedAt != null || doc.SavedAt != null) continue;
+            try
+            {
+                var dates = Documents.FileDates.Read(_lib.ReadDocumentBytes(doc), doc.FileExtension);
+                if (dates.SavedAt == null && dates.Revision == null) continue;
+                Db.SetFileDates(doc.Id, null, dates.SavedAt, dates.Revision);
+                filled++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { AppLog.Warn("BulkImport", $"Job #{job.Id}: couldn't read the dates inside document #{doc.Id} ({ex.GetType().Name})"); }
+        }
+        if (filled > 0) AppLog.Info("BulkImport", $"Job #{job.Id}: recorded file dates for {filled} document(s)");
+    }
+
     private async Task TextPhaseAsync(ImportJob job, BulkOptions options, CancellationToken ct)
     {
+        if (options.LibraryCheck) await Task.Run(() => BackfillFileDates(job, ct), ct);
         var files = Db.Query<ImportFile>("JobId=$j AND DocumentId IS NOT NULL AND TextStatus IN ($a,$b)",
             ("$j", job.Id), ("$a", (int)TextState.NotStarted), ("$b", (int)TextState.Waiting));
         var later = new List<CaseDocument>();
@@ -698,6 +742,10 @@ public sealed class BulkImportService
         }
 
         var baseSettings = _settings();
+        // Library check: only the chosen sections are kept; categories alone can use the AI's quick reading
+        var kinds = LibraryCheck.KindsFor(options.Sections);
+        if (LibraryCheck.CategoriesOnly(options.Sections)) baseSettings = With(baseSettings, quick: true);
+        string Scoped(string fp) => kinds == null ? fp : fp + "|" + string.Join(",", kinds.Order(StringComparer.Ordinal));
         job.Model = client.ModelName;
         job.PromptVersion = baseSettings.PromptVersion;
         job.SchemaVersion = AnalysisSchema.Version;
@@ -769,7 +817,7 @@ public sealed class BulkImportService
                 DocumentAnalyzer current;
                 bool local = localAnalyzer != null && viaLocal.Contains(f.Id);
                 lock (gate) current = local ? localAnalyzer : analyzer;
-                var fingerprint = current.InputFingerprint(doc, pages);
+                var fingerprint = Scoped(current.InputFingerprint(doc, pages));
                 if (f.AnalysisFingerprint == fingerprint)
                 {
                     // Already analysed with exactly this text, prompt, schema, model and reading size: don't repeat it
@@ -789,7 +837,7 @@ public sealed class BulkImportService
                     {
                         int seen;
                         lock (gate) { current = local ? localAnalyzer : analyzer; seen = level; }
-                        fingerprint = current.InputFingerprint(doc, pages);
+                        fingerprint = Scoped(current.InputFingerprint(doc, pages));
                         result = await current.AnalyseAsync(doc, pages, job.Id, stopOnLoss.Token);
                         if (result.Ok || result.ErrorCode is not ("AI_OVERLOAD" or "AI_TIMEOUT") || seen >= LastLevel) break;
                         if (local) break;
@@ -797,7 +845,7 @@ public sealed class BulkImportService
                     }
                     if (result.Ok)
                     {
-                        Db.ReplaceFindings(doc.Id, result.Findings);
+                        Db.ReplaceFindings(doc.Id, kinds == null ? result.Findings : result.Findings.Where(x => kinds.Contains(x.Kind)).ToList(), kinds);
                         f.AnalysisValue = AnalysisState.Done;
                         f.AnalysisFingerprint = fingerprint;
                         f.AnalysedAt = DateTime.Now;
@@ -872,18 +920,26 @@ public sealed class BulkImportService
 
     private void SetAwaiting(ImportJob job, List<ImportFile> files, string code, IReadOnlyList<Category> categories)
     {
+        var kinds = LibraryCheck.KindsFor(ReadOptions(job).Sections);
+        bool wantCategory = kinds == null || kinds.Contains(FindingKinds.Category), wantComplaint = kinds == null || kinds.Contains(FindingKinds.Complaint);
+        bool Has(long docId, string kind) => Db.Query<AiFinding>("DocumentId=$d AND Kind=$k AND Status<>$s", ("$d", docId), ("$k", kind),
+            ("$s", (int)FindingStatus.Superseded)).Any();
         foreach (var f in files)
         {
             f.AnalysisValue = AnalysisState.AwaitingAi;
             f.UpdatedAt = DateTime.Now;
             var doc = Db.GetDocument(f.DocumentId!.Value);
             if (doc == null) continue;
-            // CaseKeeper's own category guess, added only where the document has no category suggestion at all yet –
-            // never replacing anything already there
-            var rule = DocumentAnalyzer.RuleBasedCategory(doc, Db.GetAllPageText(doc.Id), categories, job.Id);
-            if (rule != null && !Db.Query<AiFinding>("DocumentId=$d AND Kind=$k AND Status<>$s", ("$d", doc.Id), ("$k", FindingKinds.Category),
-                    ("$s", (int)FindingStatus.Superseded)).Any())
-                Db.AddFindings(new[] { rule });
+            var pages = Db.GetAllPageText(doc.Id);
+            // CaseKeeper's own suggestions, added only where the document has none of that kind yet – never replacing
+            // anything already there. A complaint letter gets its complaint category rather than the general guess.
+            var complaint = wantCategory || wantComplaint ? ComplaintRules.Suggest(doc, pages, categories, job.Id) : new List<AiFinding>();
+            var add = new List<AiFinding>();
+            if (wantComplaint && complaint.FirstOrDefault(x => x.Kind == FindingKinds.Complaint) is { } c && !Has(doc.Id, FindingKinds.Complaint)) add.Add(c);
+            if (wantCategory && !Has(doc.Id, FindingKinds.Category) &&
+                (complaint.FirstOrDefault(x => x.Kind == FindingKinds.Category) ?? DocumentAnalyzer.RuleBasedCategory(doc, pages, categories, job.Id)) is { } cat)
+                add.Add(cat);
+            if (add.Count > 0) Db.AddFindings(add);
         }
         Db.SaveQuietBatch(files);
         job.LastErrorCode = code;

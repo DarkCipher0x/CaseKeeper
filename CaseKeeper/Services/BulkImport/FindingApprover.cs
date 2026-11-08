@@ -254,25 +254,153 @@ public static class FindingApprover
                     DocumentId = f.DocumentId
                 };
             case FindingKinds.Party or FindingKinds.Child:
-                return new Party
+            {
+                var fresh = new Party
                 {
                     Role = RoleFor(P(f, "role"), f.Kind == FindingKinds.Child), Name = P(f, "name") ?? "",
                     Representative = P(f, "representative") ?? "", DateOfBirth = PDate(f, "dateOfBirth"),
+                    Contact = f.Kind == FindingKinds.Child ? "" : P(f, "contactDetails") ?? "",
                     Notes = provenance
                 };
+                // Someone already in Parties: fill in what's missing, never overwrite
+                return ExistingParty(db, fresh) is { } existing ? FillParty(existing, fresh) : fresh;
+            }
             case FindingKinds.Complaint:
-                return new Complaint
+            {
+                bool isReply = P(f, "isResponse") == "true";
+                var fresh = new Complaint
                 {
                     Recipient = Pick(P(f, "recipient") ?? P(f, "organisation"), Complaint.Recipients, "Other"),
-                    RecipientName = P(f, "recipient") ?? "", Reference = P(f, "reference") ?? "", Subject = f.Title,
-                    Summary = string.Join("\n", new[] { f.Detail, provenance }.Where(s => !string.IsNullOrWhiteSpace(s))),
-                    DateSent = f.DatePrecision == "exact" && f.DateRole == "complaint" ? f.DateValue : null,
-                    Status = f.DatePrecision == "exact" && f.DateRole == "complaint" ? "Sent" : "Draft",
+                    RecipientName = P(f, "recipient") ?? P(f, "organisation") ?? "", Reference = P(f, "reference") ?? "", Subject = f.Title,
+                    Summary = string.Join("\n", new[] { f.Detail, ReplyWording(f), provenance }.Where(s => !string.IsNullOrWhiteSpace(s))),
+                    DateSent = !isReply && f.DatePrecision == "exact" && f.DateRole == "complaint" ? f.DateValue : null,
+                    ResponseDue = PDate(f, "responseDue"),
+                    Status = isReply ? "Response Received" : f.DatePrecision == "exact" && f.DateRole == "complaint" ? "Sent" : "Draft",
                     DocumentIds = new List<long> { f.DocumentId }
+                };
+                // A reply (or a follow-up) to a complaint already in the case adds to it instead of starting another
+                if (ExistingComplaint(db, fresh) is { } existing)
+                    return FillComplaint(existing, fresh, isReply, f, db.GetDocument(f.DocumentId)?.Title ?? "a document");
+                return fresh;
+            }
+            case FindingKinds.ScottItem:
+                return new ScottItem
+                {
+                    ItemNo = db.All<ScottItem>().Select(s => s.ItemNo).DefaultIfEmpty(0).Max() + 1,
+                    IncidentDate = f.DatePrecision == "exact" ? f.DateValue : null,
+                    DateText = f.DatePrecision == "exact" ? "" : f.DateText ?? "",
+                    AllegedBy = ScottSide(db, P(f, "allegedBy") ?? f.AssertedBy),
+                    Allegation = f.Title.StartsWith("The document alleges: ", StringComparison.Ordinal) ? f.Title["The document alleges: ".Length..] : f.Title,
+                    EvidenceRefs = EvidenceRef(db, f), FindingSought = P(f, "findingSought") ?? "", Status = "Alleged",
+                    Notes = provenance
                 };
             default:
                 return null;
         }
+    }
+
+    // ------------------------------------------------------------------ adding to records already in the case
+    /// <summary>Someone already in Parties with the same name (case and spacing ignored).</summary>
+    public static Party ExistingParty(Database db, Party p) =>
+        string.IsNullOrWhiteSpace(p.Name) ? null
+            : db.GetParties().FirstOrDefault(x => Norm(x.Name) == Norm(p.Name));
+
+    private static string Norm(string s) => string.Join(' ', (s ?? "").ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>A copy of the existing party with only its empty details filled in from the document.</summary>
+    private static Party FillParty(Party existing, Party fresh)
+    {
+        var p = new Party
+        {
+            Id = existing.Id, Role = existing.Role, Name = existing.Name, IsMe = existing.IsMe, Notes = existing.Notes,
+            Representative = Blank(existing.Representative) ? fresh.Representative : existing.Representative,
+            Contact = Blank(existing.Contact) && !existing.Role.StartsWith("Child", StringComparison.Ordinal) ? fresh.Contact : existing.Contact,
+            DateOfBirth = existing.DateOfBirth ?? fresh.DateOfBirth
+        };
+        return p;
+    }
+
+    /// <summary>A complaint already in the case with the same reference, or much the same subject.</summary>
+    public static Complaint ExistingComplaint(Database db, Complaint x) =>
+        db.GetComplaints().FirstOrDefault(c => !string.IsNullOrWhiteSpace(x.Reference) && c.Reference.Equals(x.Reference, StringComparison.OrdinalIgnoreCase))
+        ?? db.GetComplaints().FirstOrDefault(c => AnalysisSchema.Similarity(c.Subject, x.Subject) >= 0.6);
+
+    /// <summary>
+    /// A copy of the existing complaint with the document linked and only empty fields filled in. A reply moves it to
+    /// "Response Received" and adds the reply's summary to the outcome; nothing already written is changed.
+    /// </summary>
+    private static Complaint FillComplaint(Complaint existing, Complaint fresh, bool isReply, AiFinding f, string docTitle)
+    {
+        var c = new Complaint
+        {
+            Id = existing.Id, Recipient = existing.Recipient == "Other" && fresh.Recipient != "Other" ? fresh.Recipient : existing.Recipient,
+            RecipientName = Blank(existing.RecipientName) ? fresh.RecipientName : existing.RecipientName,
+            Reference = Blank(existing.Reference) ? fresh.Reference : existing.Reference,
+            Subject = existing.Subject, Summary = existing.Summary,
+            DateSent = existing.DateSent ?? fresh.DateSent, ResponseDue = existing.ResponseDue ?? fresh.ResponseDue,
+            Status = isReply && existing.Status is "Draft" or "Sent" or "Acknowledged" or "Awaiting Response" ? "Response Received" : existing.Status,
+            Outcome = existing.Outcome,
+            DocumentIds = existing.DocumentIds.Contains(f.DocumentId) ? existing.DocumentIds.ToList() : existing.DocumentIds.Append(f.DocumentId).ToList()
+        };
+        if (isReply && !string.IsNullOrWhiteSpace(f.Detail.Length > 0 ? f.Detail : f.Title))
+        {
+            var line = $"Reply ({docTitle}{(f.DateValue is { } d ? $", {d:d MMM yyyy}" : "")}): {(f.Detail.Length > 0 ? f.Detail : f.Title)}";
+            if (!(existing.Outcome ?? "").Contains(line, StringComparison.Ordinal))
+                c.Outcome = string.Join("\n", new[] { existing.Outcome, line }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        }
+        return c;
+    }
+
+    /// <summary>What adding to an existing record will change, in plain words, or null when it's a new record.</summary>
+    public static string DescribeUpdate(Database db, object draft)
+    {
+        var changes = new List<string>();
+        void Field(string name, string before, string after)
+        {
+            if ((before ?? "") != (after ?? "")) changes.Add($"{name}: {(Blank(before) ? "(empty)" : before)} → {after}");
+        }
+        switch (draft)
+        {
+            case Complaint { Id: > 0 } x when db.GetComplaints().FirstOrDefault(c => c.Id == x.Id) is { } was:
+                Field("Organisation", was.Recipient, x.Recipient);
+                Field("Name", was.RecipientName, x.RecipientName);
+                Field("Reference", was.Reference, x.Reference);
+                Field("Date sent", was.DateSent?.ToString("d MMM yyyy"), x.DateSent?.ToString("d MMM yyyy"));
+                Field("Response due", was.ResponseDue?.ToString("d MMM yyyy"), x.ResponseDue?.ToString("d MMM yyyy"));
+                Field("Status", was.Status, x.Status);
+                if (x.DocumentIds.Count > was.DocumentIds.Count) changes.Add("Links this document");
+                if ((x.Outcome ?? "") != (was.Outcome ?? "")) changes.Add("Adds the reply to the outcome");
+                return $"Adds to the complaint already in the case, “{was.Subject}”:\n  •  " + (changes.Count == 0 ? "nothing new to add" : string.Join("\n  •  ", changes));
+            case Party { Id: > 0 } p when db.GetParties().FirstOrDefault(x => x.Id == p.Id) is { } was:
+                Field("Representative", was.Representative, p.Representative);
+                Field("Contact details", was.Contact, p.Contact);
+                Field("Date of birth", was.DateOfBirth?.ToString("d MMM yyyy"), p.DateOfBirth?.ToString("d MMM yyyy"));
+                return $"Fills in details for {was.DisplayName}, who is already in Parties:\n  •  " + (changes.Count == 0 ? "nothing new to add" : string.Join("\n  •  ", changes));
+        }
+        return null;
+    }
+
+    private static bool Blank(string s) => string.IsNullOrWhiteSpace(s);
+
+    private static string ReplyWording(AiFinding f) =>
+        P(f, "responseDueText") is { } t && P(f, "responseDue") == null ? $"Reply expected: “{t}” (as written; work out the date and add it)." : null;
+
+    /// <summary>The Scott schedule's "alleged by": a party's name if it matches one, else Applicant/Respondent from the wording.</summary>
+    private static string ScottSide(Database db, string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "Applicant";
+        var party = db.GetParties().FirstOrDefault(p => Norm(p.Name) == Norm(raw));
+        if (party != null) return party.Name;
+        var t = raw.ToLowerInvariant();
+        return t.Contains("respondent") ? "Respondent" : t.Contains("applicant") ? "Applicant" : raw.Trim();
+    }
+
+    private static string EvidenceRef(Database db, AiFinding f)
+    {
+        var doc = db.GetDocument(f.DocumentId);
+        if (doc == null) return "";
+        var name = string.IsNullOrWhiteSpace(doc.ExhibitRef) ? doc.Title : doc.ExhibitRef;
+        return f.PageFrom is { } p ? $"{name} p.{p}" : name;
     }
 
     /// <summary>Why a finding can't be approved as it stands, or null. The person can usually fix it with Edit &amp; approve.</summary>
@@ -289,6 +417,7 @@ public static class FindingApprover
             case CaseAction { DueDate: null } when f.Kind == FindingKinds.Deadline:
                 return "A deadline needs a date. Use Edit & approve, or “Work out the date…”.";
             case Party p when string.IsNullOrWhiteSpace(p.Name): return "There's no name to add.";
+            case ScottItem s when string.IsNullOrWhiteSpace(s.Allegation): return "There's no allegation to add. Use Edit & approve to write it.";
             case CaseDocument when f.Kind == FindingKinds.Category && PLong(f, "categoryId") == null:
                 return "No category was chosen. Use Edit & approve to pick one.";
         }
@@ -317,9 +446,14 @@ public static class FindingApprover
             case ContactSession c when c.SessionDate is { } cd:
                 var contact = db.All<ContactSession>().FirstOrDefault(x => x.SessionDate?.Date == cd.Date);
                 return contact == null ? null : $"The contact log already has an entry for {cd:d MMM yyyy}.";
+            case Party { Id: > 0 } or Complaint { Id: > 0 }:
+                return null;            // adding to an existing record: Import review shows what it changes instead
             case Party p when !string.IsNullOrWhiteSpace(p.Name):
                 var party = db.GetParties().FirstOrDefault(x => x.Name.Equals(p.Name, StringComparison.OrdinalIgnoreCase));
                 return party == null ? null : $"{party.DisplayName} is already in Parties.";
+            case ScottItem s:
+                var listed = db.All<ScottItem>().FirstOrDefault(x => AnalysisSchema.Similarity(x.Allegation, s.Allegation) >= 0.6);
+                return listed == null ? null : $"The Scott schedule already has item {listed.ItemNo}: “{AnalysisSchema.Clip(listed.Allegation, 90)}”.";
             case Complaint x:
                 var complaint = db.GetComplaints().FirstOrDefault(c =>
                     (!string.IsNullOrWhiteSpace(x.Reference) && c.Reference.Equals(x.Reference, StringComparison.OrdinalIgnoreCase)) ||
@@ -394,13 +528,43 @@ public static class FindingApprover
                 db.Save(c);
                 (type, id) = ("contact", c.Id);
                 break;
+            case Party { Id: > 0 } p:
+            {
+                var before = db.GetParties().FirstOrDefault(x => x.Id == p.Id) ?? throw new InvalidOperationException("That person is no longer in Parties.");
+                previous = JsonSerializer.Serialize(new Dictionary<string, string>
+                {
+                    ["representative"] = before.Representative ?? "", ["contact"] = before.Contact ?? "",
+                    ["dateOfBirth"] = before.DateOfBirth?.ToString("yyyy-MM-dd") ?? ""
+                });
+                db.SaveParty(p);
+                (type, id) = ("party-update", p.Id);
+                break;
+            }
             case Party p:
                 db.SaveParty(p);
                 (type, id) = ("party", p.Id);
                 break;
+            case Complaint { Id: > 0 } x:
+            {
+                var before = db.GetComplaints().FirstOrDefault(c => c.Id == x.Id) ?? throw new InvalidOperationException("That complaint is no longer in the case.");
+                previous = JsonSerializer.Serialize(new Dictionary<string, string>
+                {
+                    ["recipient"] = before.Recipient ?? "", ["recipientName"] = before.RecipientName ?? "", ["reference"] = before.Reference ?? "",
+                    ["dateSent"] = before.DateSent?.ToString("yyyy-MM-dd") ?? "", ["responseDue"] = before.ResponseDue?.ToString("yyyy-MM-dd") ?? "",
+                    ["status"] = before.Status ?? "", ["outcome"] = before.Outcome ?? "",
+                    ["documentIds"] = string.Join(",", before.DocumentIds)
+                });
+                db.SaveComplaint(x);
+                (type, id) = ("complaint-update", x.Id);
+                break;
+            }
             case Complaint x:
                 db.SaveComplaint(x);
                 (type, id) = ("complaint", x.Id);
+                break;
+            case ScottItem s:
+                db.Save(s);
+                (type, id) = ("scott", s.Id);
                 break;
             case null:
                 (type, id) = ("", null);       // a note for review, resolved without creating anything
@@ -431,7 +595,29 @@ public static class FindingApprover
             $"{(edited ? " after editing" : "")}.\n{what}.\nSource: document #{f.DocumentId}{(f.PageFrom is { } pg ? $", page {pg}" : "")}.\n" +
             $"Model: {f.Model} · prompt {f.PromptVersion} · schema {f.SchemaVersion} · confidence {f.Confidence.ToString("0.00", CultureInfo.InvariantCulture)}" +
             (string.IsNullOrWhiteSpace(note) ? "" : "\n" + note));
+        if (record is Complaint && !automatic) FileWithComplaint(db, f);
         return new ApprovalOutcome { Ok = true, RecordType = type, RecordId = id, Message = what };
+    }
+
+    /// <summary>
+    /// Approving a complaint also files its document under the complaint category suggested for it, when the document
+    /// is still Uncategorised. Both decisions are in the audit trail, and each can be undone on its own.
+    /// </summary>
+    private static void FileWithComplaint(Database db, AiFinding complaint)
+    {
+        try
+        {
+            var doc = db.GetDocument(complaint.DocumentId);
+            var categories = db.GetCategories();
+            var unknown = CategoryMatcher.Unknown(categories)?.Id;
+            if (doc == null || doc.CategoryId != unknown) return;
+            var suggestion = db.Query<AiFinding>("DocumentId=$d AND Kind=$k AND Status IN (0,3)", ("$d", doc.Id), ("$k", FindingKinds.Category))
+                .FirstOrDefault(c => PLong(c, "categoryId") is { } cat && categories.FirstOrDefault(x => x.Id == cat) is { } category &&
+                                     (category.GroupName == "Complaints & Representations" || category.Name.Contains("complaint", StringComparison.OrdinalIgnoreCase)));
+            if (suggestion == null || Draft(db, suggestion) is not CaseDocument draft) return;
+            Approve(db, suggestion, draft, edited: false, note: "Approved together with the complaint from the same document.");
+        }
+        catch (Exception ex) { AppLog.Warn("Review", "Couldn't file the complaint's document under its category", ex); }
     }
 
     /// <summary>Rejects a suggestion. The decision is kept; the quoted evidence isn't, as it's no longer needed.</summary>
@@ -543,6 +729,43 @@ public static class FindingApprover
                 case "complaint":
                     if (db.GetComplaints().Any(c => c.Id == rid)) { db.DeleteComplaint(rid); removed = "complaint removed"; }
                     break;
+                case "scott":
+                    if (db.Find<ScottItem>(rid) != null) { db.Remove<ScottItem>(rid); removed = "Scott schedule item removed"; }
+                    break;
+                case "party-update":
+                {
+                    var p = db.GetParties().FirstOrDefault(x => x.Id == rid);
+                    var prev = string.IsNullOrWhiteSpace(f.PreviousValue) ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(f.PreviousValue);
+                    if (p != null && prev != null)
+                    {
+                        p.Representative = prev.GetValueOrDefault("representative") ?? "";
+                        p.Contact = prev.GetValueOrDefault("contact") ?? "";
+                        p.DateOfBirth = UkDates.ParseIso(prev.GetValueOrDefault("dateOfBirth"));
+                        db.SaveParty(p);
+                        removed = "party details put back";
+                    }
+                    break;
+                }
+                case "complaint-update":
+                {
+                    var c = db.GetComplaints().FirstOrDefault(x => x.Id == rid);
+                    var prev = string.IsNullOrWhiteSpace(f.PreviousValue) ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(f.PreviousValue);
+                    if (c != null && prev != null)
+                    {
+                        c.Recipient = prev.GetValueOrDefault("recipient") ?? c.Recipient;
+                        c.RecipientName = prev.GetValueOrDefault("recipientName") ?? "";
+                        c.Reference = prev.GetValueOrDefault("reference") ?? "";
+                        c.DateSent = UkDates.ParseIso(prev.GetValueOrDefault("dateSent"));
+                        c.ResponseDue = UkDates.ParseIso(prev.GetValueOrDefault("responseDue"));
+                        c.Status = prev.GetValueOrDefault("status") ?? c.Status;
+                        c.Outcome = prev.GetValueOrDefault("outcome") ?? "";
+                        c.DocumentIds = (prev.GetValueOrDefault("documentIds") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => long.TryParse(s, out var v) ? v : 0).Where(v => v > 0).ToList();
+                        db.SaveComplaint(c);
+                        removed = "complaint put back as it was";
+                    }
+                    break;
+                }
             }
         }
         f.StatusValue = FindingStatus.Proposed;

@@ -712,6 +712,7 @@ public static class AiService
         new("questions", "Questions to consider", "Gaps and questions to raise or prepare for"),
         new("position", "Position statement outline", "A neutral outline to help draft a position statement"),
         new("compliance", "Compliance with orders", "What orders required and whether it appears to have been done"),
+        new("overview", "Case overview", "The whole case at a glance: who's involved, what's happened, where it stands and what's outstanding"),
     };
 
     public static readonly Dictionary<string, string> Defaults = new()
@@ -740,6 +741,11 @@ public static class AiService
         ["prompt.report.questions"] = "Identify gaps, unclear points and questions arising from the material that the person may want to raise, clarify or prepare for at a hearing or with Cafcass. Group them by topic. Keep the tone neutral.",
         ["prompt.report.position"] = "Draft a neutral outline to help the person write their own position statement: background, current arrangements, issues for the court, the person's apparent proposals (only as shown in the material), and the orders sought. Use [square brackets] for anything they need to fill in. Remind them to check and rewrite it in their own words.",
         ["prompt.report.compliance"] = "List what the court orders and directions in the material required (who, what, by when), and whether the material shows each was done, done late, or not done. Use a table with sources.",
+        ["prompt.report.overview"] = "Write an overview of the whole case from the document summaries and records provided, under these headings: " +
+            "**Who's involved** (parties, children, professionals and organisations); **What has happened** (the history in date order, briefly); " +
+            "**Where things stand now** (current arrangements and the stage of proceedings); **Coming up** (the next hearing and deadlines); " +
+            "**Outstanding** (actions, complaints awaiting a reply, Scott schedule items); **Key issues** (what is disputed, neutrally, with who says what); " +
+            "**Gaps** (documents referred to but missing, undated or unclear points). Cite document titles. Never state an allegation as a fact.",
         ["prompt.rewrite"] = "Rewrite the following text so it is clear, polite, concise and factual, in plain UK English, suitable for a letter or statement in family court proceedings. Keep every fact, date and name exactly as given. Do not add anything new. Reply with the rewritten text only.",
         ["prompt.explain"] = "Explain the following in plain, friendly English for someone with no legal background. Keep it short, use bullet points, and add a one-line reminder that this is general information, not legal advice.",
         ["prompt.guide.answer"] = "Answer the person's question using ONLY the guide articles provided below, which are about family law in England and Wales. If the articles don't cover it, say so and suggest where to find out (e.g. gov.uk, an advice service or a solicitor). Be brief and practical, mention which article(s) you used, and remind them this is general information, not legal advice.",
@@ -766,7 +772,13 @@ public static class AiService
             "alleges, and name who in assertedBy. Never present an allegation as a fact. (7) Never calculate a deadline. If an order says 'within 14 days' " +
             "or 'by 4pm 3 clear days before the hearing', copy the wording, set dueDateExplicit to false and leave dueDate null. (8) confidence (0 to 1) " +
             "is how clearly the text supports the finding. (9) Keep descriptions short and factual. Only include findings that matter to the case: " +
-            "hearings, orders, directions, deadlines, events, contact, people, complaints, safeguarding concerns, and documents referred to but missing.",
+            "hearings, orders, directions, deadlines, events, contact, people, complaints, safeguarding concerns, and documents referred to but missing. " +
+            "(10) People (party/child): give their role and, for professionals and organisations only, any representative and contact details " +
+            "(contactDetails: phone, email or address exactly as written). Never give contact details for a child. (11) Complaints: give the " +
+            "organisation (recipient), any reference, the date it was sent, any reply deadline written as a date (responseDue) or as wording " +
+            "(responseDueText), and set isResponse to true when this document is the organisation's reply. (12) scottItem: one allegation of " +
+            "something someone is said to have done, for a Scott schedule: who alleges it (allegedBy), the allegation in neutral words " +
+            "(description), its date or dateText, and any finding sought. Only allegations actually made in the document.",
         ["prompt.guide.apply"] = "Using the guide article below and the case background provided, explain in plain English how the general information in the article may relate to this person's situation, and what they might want to check or prepare. Do not give legal advice or predict outcomes; point out where they should take advice.",
     };
 

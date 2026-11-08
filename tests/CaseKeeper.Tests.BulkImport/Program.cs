@@ -204,6 +204,142 @@ static class Program
         ["findings"] = new JsonArray(findings.Select(f => (JsonNode)f).ToArray())
     }.ToJsonString();
 
+    // ================================================================== 0.7.0: library check, complaints, latest edit
+    static void LibraryCheckAndComplaints()
+    {
+        // ---- a library with a complaint, its reply and an ordinary letter, imported with nothing suggested
+        var lib = NewLib("libcheck");
+        var src = NewDir("libcheck-src");
+        Put(src, "complaint.txt", "Dear Sir or Madam,\nI wish to make a formal complaint about the way the Cafcass officer handled the safeguarding letter. " +
+                                  "Complaint reference CAF-20931. Please reply within 20 working days.\nYours faithfully, Winifred Quillfeather");
+        Put(src, "reply.txt", "Dear Ms Quillfeather,\nThank you for your complaint. Our ref: CAF-20931. We have now investigated the points you raised " +
+                              "about the Cafcass officer and your complaint is partially upheld.\nCafcass Complaints Team");
+        Put(src, "school.txt", "Letter about the school run and the handover times on Tuesday afternoons, and who collects the children from the gate.");
+        var svc = Svc(lib, new FakeAi(), aiOn: false);
+        Run(lib, svc, src, new BulkOptions { RunAi = false, Sections = new() { "people" } });
+        Check(Findings(lib, FindingKinds.Complaint).Count == 0 && Findings(lib, FindingKinds.Category).Count == 0, "library check: sections not chosen get no rule suggestions");
+
+        // ---- library check without AI: CaseKeeper's own rules file the complaints and fill them in
+        var docs = lib.Db.GetDocuments();
+        var job = svc.CreateLibraryJob(docs, new BulkOptions { LibraryCheck = true, RunAi = false }, "Library check");
+        svc.RunAsync(job.Id).GetAwaiter().GetResult();
+        long Doc(string file) => docs.Single(d => d.OriginalFileName == file).Id;
+        var complaints = Findings(lib, FindingKinds.Complaint);
+        var complaint = complaints.SingleOrDefault(f => f.DocumentId == Doc("complaint.txt"));
+        var reply = complaints.SingleOrDefault(f => f.DocumentId == Doc("reply.txt"));
+        Check(complaints.Count == 2 && complaints.All(f => f.Model == ComplaintRules.Model), "library check (no AI): the complaint and the reply are recognised by CaseKeeper's rules");
+        Check(complaints.All(f => f.DocumentId != Doc("school.txt")), "library check (no AI): an ordinary letter isn't taken for a complaint");
+        var cp = complaint == null ? new JsonObject() : JsonNode.Parse(complaint.PayloadJson)!.AsObject();
+        Check((string)cp["recipient"] == "Cafcass" && (string)cp["reference"] == "CAF-20931" && (string)cp["isResponse"] == "false" &&
+              ((string)cp["responseDueText"] ?? "").Contains("20 working days"), "complaint rules: organisation, reference and the reply wording are filled in");
+        var rp = reply == null ? new JsonObject() : JsonNode.Parse(reply.PayloadJson)!.AsObject();
+        Check((string)rp["isResponse"] == "true" && (string)rp["reference"] == "CAF-20931", "complaint rules: the organisation's reply is recognised as a reply");
+        var categories = lib.Db.GetCategories();
+        string CatOf(long docId) => Findings(lib, FindingKinds.Category).Where(f => f.DocumentId == docId).Select(f => f.Title).FirstOrDefault() ?? "";
+        Check(CatOf(Doc("complaint.txt")).Contains("Cafcass complaint") && CatOf(Doc("reply.txt")).Contains("Cafcass complaint response"),
+            "library check (no AI): complaint letters are given their complaint categories");
+        Check(lib.Db.GetSetting(LibraryCheck.LastRunSetting, "") != "" && lib.Db.GetAudit(50).Any(a => a.Summary.StartsWith("Library check: 3 document(s)")),
+            "library check: recorded as run, and audited");
+
+        // ---- approving the complaint, then its reply (which updates it instead of adding a second complaint)
+        if (complaint != null && reply != null)
+        {
+            var made = FindingApprover.Approve(lib.Db, complaint, FindingApprover.Draft(lib.Db, complaint), edited: false);
+            var unknownId = CategoryMatcher.Unknown(categories)?.Id;
+            var filed = lib.Db.GetDocument(Doc("complaint.txt"));
+            Check(made.Ok && lib.Db.GetComplaints().Count == 1, "complaint approval: one complaint record");
+            Check(filed.CategoryId != unknownId && categories.First(c => c.Id == filed.CategoryId).Name == "Cafcass complaint",
+                "complaint approval: also files the Uncategorised document under its complaint category");
+            var replyDraft = FindingApprover.Draft(lib.Db, reply);
+            Check(FindingApprover.DescribeUpdate(lib.Db, replyDraft) is { Length: > 0 }, "complaint reply: shown as an update to the existing complaint");
+            var before = lib.Db.GetComplaints().Single();
+            var merged = FindingApprover.Approve(lib.Db, reply, replyDraft, edited: false);
+            var after = lib.Db.GetComplaints();
+            Check(merged.Ok && after.Count == 1 && after[0].Status == "Response Received" && after[0].DocumentIds.Contains(Doc("reply.txt")),
+                "complaint reply: links the reply and marks the response received, without a second complaint");
+            Check(after[0].Reference == before.Reference && after[0].Recipient == before.Recipient && after[0].Subject == before.Subject,
+                "complaint reply: fields already filled in are not overwritten");
+            var undone = FindingApprover.Undo(lib.Db, lib.Db.Query<AiFinding>("Id=$i", ("$i", reply.Id)).Single());
+            var restored = lib.Db.GetComplaints().Single();
+            Check(undone.Ok && restored.Status == before.Status && !restored.DocumentIds.Contains(Doc("reply.txt")), "complaint reply: undo restores the complaint as it was");
+        }
+
+        // ---- the assistant's view of the library: counts only
+        var stats = LibraryCheck.Count(lib.Db);
+        var state = LibraryCheck.DescribeForAssistant(stats);
+        Check(stats.Documents == 3 && state.Contains("Documents: 3") && !state.Contains("Quillfeather") && !state.Contains("complaint.txt") && !state.Contains("Cafcass"),
+            "assistant: the library state is counts only – no names, titles or content");
+
+        // ---- library check with AI, filling only the chosen sections
+        var lib2 = NewLib("libcheck-ai");
+        var src2 = NewDir("libcheck-ai-src");
+        Put(src2, "notice.txt", "Notice of hearing. The hearing is listed for 12 March 2027 at the Family Court. Contact will take place every Saturday at the contact centre.");
+        var ai = new FakeAi
+        {
+            Respond = u => Answer(u, findings: new[]
+            {
+                F("hearing", "Hearing listed", 1, "The hearing is listed for 12 March 2027", date: "2027-03-12", dateText: "12 March 2027", role: "hearingListed"),
+                F("contact", "Contact every Saturday", 1, "Contact will take place every Saturday at the contact centre")
+            })
+        };
+        var svc2 = Svc(lib2, ai, aiOn: true);
+        Run(lib2, svc2, src2, new BulkOptions { RunAi = false, Sections = new() { "people" } });
+        int callsBefore = ai.Calls;
+        var job2 = svc2.CreateLibraryJob(lib2.Db.GetDocuments(), new BulkOptions { LibraryCheck = true, RunAi = true, Sections = new() { "court" } }, "Library check");
+        svc2.RunAsync(job2.Id).GetAwaiter().GetResult();
+        Check(ai.Calls > callsBefore && Findings(lib2, FindingKinds.Hearing).Count == 1 && Findings(lib2, FindingKinds.Contact).Count == 0,
+            "library check (AI): only the chosen sections are kept");
+        var job3 = svc2.CreateLibraryJob(lib2.Db.GetDocuments(), new BulkOptions { LibraryCheck = true, RunAi = true, Sections = new() { "contact" } }, "Library check");
+        svc2.RunAsync(job3.Id).GetAwaiter().GetResult();
+        Check(Findings(lib2, FindingKinds.Contact).Count == 1 && Findings(lib2, FindingKinds.Hearing).Count == 1,
+            "library check (AI): a different section is read again, and leaves the earlier section's suggestions alone");
+
+        // ---- which copy is the latest edit
+        string Para(int seed, int n) => string.Join(" ", Enumerable.Range(0, n).Select(i => $"Sentence {seed}-{i} sets out what was agreed about the holidays and the handover times."));
+        var text = Para(3, 30);
+        var saved = VersionDetector.Find(new List<VersionInput>
+        {
+            new(1, "Agreement (PDF)", text, null, new DateTime(2026, 10, 9), "a", SavedAt: new DateTime(2026, 9, 1, 9, 0, 0)),
+            new(2, "Agreement (Word)", text, null, new DateTime(2026, 9, 2), "b", SavedAt: new DateTime(2026, 10, 3, 14, 2, 0)),
+        }).Single();
+        Check(saved.Members[0].DocumentId == 2 && saved.NewestReason.Contains("last saved") && saved.NewestReason.Contains("3 Oct 2026"),
+            "versions: the date saved inside the file beats when the file was copied, and says so");
+        Check(saved.Members[0].History.Contains("last saved 3 Oct 2026"), "versions: each copy has an edit history line");
+        var revised = VersionDetector.Find(new List<VersionInput>
+        {
+            new(1, "Draft r3", text, null, null, "a", Revision: 3),
+            new(2, "Draft r7", text, null, null, "b", Revision: 7),
+        }).Single();
+        Check(revised.Members[0].DocumentId == 2, "versions: with no dates, the higher Office revision is the latest edit");
+
+        // ---- dates stored inside files (dates only)
+        byte[] Docx(string modified, string revision)
+        {
+            using var ms = new MemoryStream();
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
+            {
+                var e = zip.CreateEntry("docProps/core.xml");
+                using var w = new StreamWriter(e.Open());
+                w.Write("<?xml version=\"1.0\"?><cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" " +
+                        "xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">" +
+                        "<dc:creator>Someone</dc:creator><cp:lastModifiedBy>Someone</cp:lastModifiedBy><cp:revision>" + revision + "</cp:revision>" +
+                        "<dcterms:modified xsi:type=\"dcterms:W3CDTF\">" + modified + "</dcterms:modified></cp:coreProperties>");
+            }
+            return ms.ToArray();
+        }
+        var dx = CaseKeeper.Services.Documents.FileDates.Read(Docx("2026-10-03T14:02:00Z", "7"), ".docx");
+        Check(dx.SavedAt?.ToUniversalTime() == new DateTime(2026, 10, 3, 14, 2, 0) && dx.Revision == 7, "file dates: Word's last saved date and revision are read");
+        Check(CaseKeeper.Services.Documents.FileDates.Read(Docx("2099-01-01T00:00:00Z", "2"), ".docx").SavedAt == null, "file dates: an impossible future date is ignored");
+        var pdf = Encoding.ASCII.GetBytes("%PDF-1.4\n1 0 obj << /Producer (x) /ModDate (D:20260915103000Z) /CreationDate (D:20260901090000Z) >> endobj\n%%EOF");
+        Check(CaseKeeper.Services.Documents.FileDates.Read(pdf, ".pdf").SavedAt?.Date == new DateTime(2026, 9, 15), "file dates: a PDF's modification date is read");
+        Check(CaseKeeper.Services.Documents.FileDates.Read(Encoding.ASCII.GetBytes("not really a pdf"), ".pdf").SavedAt == null &&
+              CaseKeeper.Services.Documents.FileDates.Read(Array.Empty<byte>(), ".docx").SavedAt == null, "file dates: unreadable files give no date and don't fail");
+
+        // ---- working days for a reply deadline (weekends skipped)
+        Check(ComplaintRules.AddWorkingDays(new DateTime(2026, 11, 6), 1) == new DateTime(2026, 11, 9) &&
+              ComplaintRules.AddWorkingDays(new DateTime(2026, 11, 2), 20) == new DateTime(2026, 11, 30), "complaint rules: working days skip weekends");
+    }
+
     // ================================================================== cloud AI, versions and trust
     static void CloudAndVersions()
     {
@@ -446,6 +582,7 @@ static class Program
         Security(logStart);
         Hardening041();
         CloudAndVersions();
+        LibraryCheckAndComplaints();
 
         Console.WriteLine(failures == 0 ? $"ALL PASSED{(skipped > 0 ? $" ({skipped} skipped – see SKIP lines)" : "")}" : $"{failures} FAILURE(S)");
         SqliteConnection.ClearAllPools();

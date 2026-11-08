@@ -80,6 +80,69 @@ public partial class MainWindow
         GoTo("review");
     }
 
+    /// <summary>
+    /// Library check: organise and cross-check documents already in the library, with or without AI, then (optionally)
+    /// write a case overview. Opens Import review, where everything it finds waits for approval.
+    /// </summary>
+    public async void OpenLibraryCheck()
+    {
+        try
+        {
+            if (Bulk.IsRunning)
+            {
+                MessageBox.Show(this, "A bulk import or library check is already running. You can follow it in Import review.", "Check my library");
+                GoTo("review");
+                return;
+            }
+            if (Db.GetDocuments().Count == 0)
+            {
+                MessageBox.Show(this, "There are no documents to check yet. Import some first (Documents → Import, or Import folder).", "Check my library");
+                return;
+            }
+            var w = new LibraryCheckWindow { Owner = this };
+            if (w.ShowDialog() != true) return;
+            if (w.Options.RunAi && !AiService.EnsureEnabled(this, AiService.BulkProvider)) return;
+            var job = Bulk.CreateLibraryJob(w.Documents, w.Options, $"Library check – {w.Documents.Count} document(s)");
+            GoTo("review");
+            await RunBulkJobAsync(job.Id);
+            if (Bulk.GetJob(job.Id) is { StateValue: ImportJobState.Completed } && w.Options.WriteOverview) await WriteCaseOverviewAsync(ask: false);
+        }
+        catch (Exception ex)
+        {
+            var id = AppLog.Error("BulkImport", "Library check failed to start", ex);
+            MessageBox.Show(this, $"The library check couldn't start (ref {id}).", "Check my library");
+        }
+    }
+
+    /// <summary>Writes (or refreshes) the case overview with the AI chosen in Settings → AI, then shows it on the Case map.</summary>
+    public async Task WriteCaseOverviewAsync(bool ask = true)
+    {
+        if (!AiService.EnsureEnabled(this)) return;
+        var sources = CaseOverview.Sources(Db);
+        int chars = sources.Sum(s => s.Text.Length);
+        if (ask && MessageBox.Show(this,
+                $"Write a case overview from each document's summary and your records (about {chars / 1000.0:0.#}k characters, not the documents' full text), " +
+                $"using {(AiService.UsingCloud ? AiProviders.Get(AiService.Provider).Name + " (cloud)" : "your local AI")}?\n\nIt's saved in AI → Reports and shown on the Case map.",
+                "Case overview", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        ShowBulkBanner("Writing the case overview…");
+        try
+        {
+            var progress = new Progress<string>(s => { if (_bulkBannerText != null) _bulkBannerText.Text = "Case overview: " + s; });
+            await Task.Run(() => CaseOverview.WriteAsync(Db, progress, CancellationToken.None));
+            _caseMapView?.Reload();
+            GoTo("casemap");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            var id = AppLog.Error("AI", "Case overview failed", ex);
+            MessageBox.Show(this, $"The case overview couldn't be written: {ex.Message} (ref {id})", "Case overview");
+        }
+        finally { HideBulkBanner(); }
+    }
+
+    private void LibraryCheck_Click(object sender, RoutedEventArgs e) => OpenLibraryCheck();
+
     /// <summary>Runs a job, keeping the banner and the screens up to date. Returns when it finishes or pauses.</summary>
     public async Task RunBulkJobAsync(long jobId)
     {

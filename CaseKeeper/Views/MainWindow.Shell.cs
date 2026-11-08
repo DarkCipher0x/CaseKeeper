@@ -25,7 +25,8 @@ public partial class MainWindow
     public IReadOnlyList<Party> Parties => _parties;
     public IReadOnlyList<Category> Categories => _categories;
 
-    private TabItem CaseTab, ActionsTab, ContactTab, CostsTab, ScottTab, LettersTab, AiTab, ExportsTab, GuideTab, AuditTab, AssistantTab, ReviewTab;
+    private TabItem CaseTab, ActionsTab, ContactTab, CostsTab, ScottTab, LettersTab, AiTab, ExportsTab, GuideTab, AuditTab, AssistantTab, ReviewTab, CaseMapTab;
+    private CaseMapView _caseMapView;
     private HelpAssistantView _assistantView;
     private ImportReviewView _reviewView;
 
@@ -85,13 +86,14 @@ public partial class MainWindow
         AuditTab = NewTab("Audit trail", "", () => _auditView = new AuditView());
         AssistantTab = NewTab("Help assistant", "", () => _assistantView = new HelpAssistantView());
         ReviewTab = NewTab("Import review", "", () => _reviewView = new ImportReviewView());
+        CaseMapTab = NewTab("Case map", "\uE81E", () => _caseMapView = new CaseMapView());
         DashboardTab.Header = "Dashboard";
         BundleTab.Header = "Bundles & reports";
         SettingsTab.Header = "Settings";
 
         var order = new (TabItem Tab, bool Pro)[]
         {
-            (NavHeader("OVERVIEW"), false), (DashboardTab, false), (CaseTab, false),
+            (NavHeader("OVERVIEW"), false), (DashboardTab, false), (CaseMapTab, false), (CaseTab, false),
             (NavHeader("PAPERS"), false), (DocumentsTab, false), (ReviewTab, false), (SearchTab, false), (PartiesTab, false),
             (NavHeader("TRACK"), false), (TimelineTab, false), (ActionsTab, false), (ContactTab, false), (ComplaintsTab, false),
             (CostsTab, true), (ScottTab, true),
@@ -163,6 +165,7 @@ public partial class MainWindow
             if (!show && Nav.SelectedItem == tab) Nav.SelectedItem = DashboardTab;
         }
         if (_modeText != null) _modeText.Text = pro ? "Professional mode  ·  switch" : "Simple mode  ·  switch";
+        PrivacyStatus.Refresh();   // startup and library switch: the other library may use a different AI
     }
 
     /// <summary>Opens a screen by name. Used by the palette, the dashboard and other screens.</summary>
@@ -173,7 +176,7 @@ public partial class MainWindow
             "dashboard" => DashboardTab, "case" or "hearings" or "orders" => CaseTab, "documents" => DocumentsTab, "search" => SearchTab,
             "parties" => PartiesTab, "timeline" => TimelineTab, "actions" => ActionsTab, "contact" => ContactTab, "complaints" => ComplaintsTab,
             "costs" => CostsTab, "scott" => ScottTab, "letters" => LettersTab, "bundles" => BundleTab, "ai" => AiTab, "exports" => ExportsTab,
-            "guide" => GuideTab, "audit" => AuditTab, "settings" => SettingsTab, "assistant" => AssistantTab, "review" => ReviewTab, _ => null
+            "guide" => GuideTab, "audit" => AuditTab, "settings" => SettingsTab, "assistant" => AssistantTab, "review" => ReviewTab, "casemap" => CaseMapTab, _ => null
         };
         if (tab == null) return;
         if (tab.Visibility != Visibility.Visible) tab.Visibility = Visibility.Visible;   // reachable from the palette even when hidden
@@ -197,6 +200,8 @@ public partial class MainWindow
             {
                 case "go" when target == "import": Import_Click(this, new RoutedEventArgs()); break;
                 case "go" when target == "bulkimport": OpenBulkImport(); break;
+                case "go" when target == "librarycheck": OpenLibraryCheck(); break;
+                case "go" when target == "overview": _ = WriteCaseOverviewAsync(); break;
                 case "go": GoTo(target); break;
                 case "settings": GoToSettings(target); break;
                 case "guide":
@@ -236,6 +241,7 @@ public partial class MainWindow
         else if (tab == ContactTab) _contactView?.Reload();
         else if (tab == CostsTab) _costsView?.Reload();
         else if (tab == ScottTab) _scottView?.Reload();
+        else if (tab == CaseMapTab) _caseMapView?.Reload();
         else if (tab == CaseTab) _caseHub?.Reload();
         else if (tab == AiTab) _aiView?.Reload();
         else if (tab == ExportsTab) _exportsView?.Reload();
@@ -369,6 +375,7 @@ public partial class MainWindow
         if (t == AuditTab) return "app.audit";
         if (t == AssistantTab) return "app.assistant";
         if (t == ReviewTab) return "app.bulkimport";
+        if (t == CaseMapTab) return "app.casemap";
         if (t == SettingsTab) return "app.security";
         return "quickstart";
     }
@@ -413,6 +420,9 @@ public partial class MainWindow
             Go("Settings", "settings", "", "options preferences"),
             Do("Import documents…", "", () => Import_Click(this, new RoutedEventArgs()), "add files", "Ctrl+I"),
             Do("Bulk Case Import – a whole folder…", "", OpenBulkImport, "folder directory subfolders bulk case import organise ai", "Ctrl+Shift+I"),
+            Do("Check my library…", "\uE9D5", OpenLibraryCheck, "library check organise organize categorise duplicates versions latest edit complaints scott parties fill sections tidy"),
+            Do("Case map", "\uE81E", () => GoTo("casemap"), "matrix overview layout laid out big picture grid timeline"),
+            Do("Write the case overview", "\uE945", () => _ = WriteCaseOverviewAsync(), "overview summary whole case ai report"),
             Do("Add a hearing…", "", () => { GoTo("hearings"); Dispatcher.BeginInvoke(() => _caseHub?.HearingsView?.Add(), System.Windows.Threading.DispatcherPriority.Loaded); }),
             Do("Add a direction or task…", "", () => { GoTo("actions"); Dispatcher.BeginInvoke(() => _actionsView?.Add(), System.Windows.Threading.DispatcherPriority.Loaded); }),
             Do("Log contact…", "", () => { GoTo("contact"); Dispatcher.BeginInvoke(() => _contactView?.Add(), System.Windows.Threading.DispatcherPriority.Loaded); }),
@@ -456,6 +466,16 @@ public partial class MainWindow
         }
         return list;
     }
+
+    /// <summary>Shows a given set of documents in Documents (from a Case map cell).</summary>
+    public void ShowDocumentSet(string title, IReadOnlyCollection<long> ids)
+    {
+        _setIds = ids.ToHashSet();
+        _setTitle = title;
+        SelectFilterAndShow("set");
+    }
+
+    public void ShowPartyDocuments(long partyId) => SelectFilterAndShow($"party:{partyId}");
 
     private void SelectFilterAndShow(string key)
     {
@@ -600,6 +620,7 @@ public partial class MainWindow
             (_parties.Any(p => p.IsMe), "Add yourself and the other parties", () => GoTo("parties")),
             (!string.IsNullOrWhiteSpace(Db.GetSetting("case.number", "")), "Fill in the case details", () => GoTo("case")),
             (_docs.Count > 0, "Import your documents – a few files, or a whole case folder with Bulk Case Import", () => OpenBulkImport()),
+            (_docs.Count == 0 || Db.GetSetting(Services.BulkImport.LibraryCheck.LastRunSetting, "") != "", "Check your library – organise it, find copies and versions, fill in the case sections", () => OpenLibraryCheck()),
             (hearings.Count > 0, "Add your next hearing", () => GoTo("hearings")),
             (Lib.Vault.IsEncrypted, "Protect the library with a password", () => GoToSettings("security")),
             (Db.GetSetting("lastBackup") != null, "Make your first backup", () => GoToSettings("backup")),

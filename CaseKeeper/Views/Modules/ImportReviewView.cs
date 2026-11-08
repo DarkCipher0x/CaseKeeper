@@ -71,6 +71,7 @@ public partial class ImportReviewView : UserControl
             new Section("contact", "Contact", f => f.IsOpen && f.Kind == FindingKinds.Contact),
             new Section("people", "Parties & children", f => f.IsOpen && f.Kind is FindingKinds.Party or FindingKinds.Child),
             new Section("complaints", "Complaints", f => f.IsOpen && f.Kind == FindingKinds.Complaint),
+            new Section("scott", "Scott schedule", f => f.IsOpen && f.Kind == FindingKinds.ScottItem),
             new Section("versions", "Duplicates & versions", _ => false),
             new Section("conflicts", "Conflicts & checks", f => f.IsOpen && (f.Kind is FindingKinds.Conflict or FindingKinds.Issue || f.ConflictGroup.Length > 0)),
             new Section("low", "Low confidence", f => f.IsOpen && f.Confidence < BulkThresholds.Medium),
@@ -93,9 +94,14 @@ public partial class ImportReviewView : UserControl
         head.Children.Add(Ui.Text("Import review", "H1"));
         head.Children.Add(Ui.Muted("AI suggestions wait here. Nothing reaches your case until you approve it.", 12));
         var start = Ui.Button("Import a folder…", "", (_, _) => Shell.OpenBulkImport(), primary: true);
-        start.Margin = new Thickness(0, 10, 0, 8);
+        start.Margin = new Thickness(0, 10, 0, 4);
         start.HorizontalAlignment = HorizontalAlignment.Left;
         head.Children.Add(start);
+        var check = Ui.Button("Check my library…", "\uE9D5", (_, _) => Shell.OpenLibraryCheck(),
+            tooltip: "Organise the documents already in the library, find copies and versions, and fill in the case sections");
+        check.Margin = new Thickness(0, 0, 0, 8);
+        check.HorizontalAlignment = HorizontalAlignment.Left;
+        head.Children.Add(check);
         DockPanel.SetDock(head, Dock.Top);
         left.Children.Add(head);
         var options = Ui.Button("Review options…", "", (_, _) => ShowOptions(), tooltip: "Confidence levels, AI speed and the advanced auto-apply rule");
@@ -312,6 +318,7 @@ public partial class ImportReviewView : UserControl
         int open = _all.Count(f => f.IsOpen);
         _subtitle.Text = open > 0 ? $"{open:N0} suggestion(s) to check." : "Nothing waiting for review.";
         var sp = new StackPanel();
+        if (LibraryCheckCard() is { } card) sp.Children.Add(card);
         var counts = new WrapPanel();
         foreach (var def in _defs.Where(d => d.Key is not ("summary" or "approved" or "auto" or "rejected" or "deferred")))
         {
@@ -354,10 +361,54 @@ public partial class ImportReviewView : UserControl
             sp.Children.Add(Ui.Text("Imports", "H2"));
             foreach (var j in jobs) sp.Children.Add(JobCard(j));
         }
-        else sp.Children.Add(Ui.Muted("No imports yet. Use “Import a folder…” to bring in a whole case folder.", 12.5));
+        else sp.Children.Add(Ui.Muted("No imports yet. Use “Import a folder…” to bring in a whole case folder, or “Check my library…” to organise what's already here.", 12.5));
         _middle.Content = new ScrollViewer { Content = sp, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         _detail.Children.Clear();
         _detail.Children.Add(Ui.Muted("Choose a section on the left to start reviewing. Press F1 for help.", 12.5));
+    }
+
+    /// <summary>The latest Library check: what it found, each line linking to where it waits.</summary>
+    private UIElement LibraryCheckCard()
+    {
+        ImportJob job;
+        try { job = Db.Query<ImportJob>("").OrderByDescending(j => j.Id).FirstOrDefault(j => BulkImportService.ReadOptions(j).LibraryCheck); }
+        catch (Exception ex) { AppLog.Warn("Review", "Couldn't read the library check", ex); return null; }
+        if (job == null) return null;
+        var options = BulkImportService.ReadOptions(job);
+        var counts = Db.CountImportFiles(job.Id);
+        var open = _all.Where(f => f.JobId == job.Id && f.IsOpen).ToList();
+        int Open(params string[] kinds) => open.Count(f => kinds.Contains(f.Kind));
+        int noText = counts.GetValueOrDefault("a" + (int)AnalysisState.NoText);
+        bool running = Shell.Bulk.IsRunning && Shell.Bulk.RunningJobId == job.Id;
+
+        var sp = new StackPanel();
+        sp.Children.Add(new TextBlock { Text = $"Library check  ·  {job.CreatedText}", FontWeight = FontWeights.SemiBold, FontSize = 15 });
+        sp.Children.Add(Ui.Muted($"{(running ? "Running" : job.StateText)} · {(options.RunAi ? "with AI" + (job.Model.Length > 0 ? $" ({job.Model})" : "") : "with CaseKeeper's own rules (no AI)")}", 12));
+        var lines = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        void Line(string text, int n, string key)
+        {
+            if (n <= 0) return;
+            var b = Ui.Button($"{text}: {n:N0}", null, (_, _) => Go(key));
+            lines.Children.Add(b);
+        }
+        Line("Categories to check", Open(FindingKinds.Category), "categories");
+        Line("Parties & children", Open(FindingKinds.Party, FindingKinds.Child), "people");
+        Line("Hearings", Open(FindingKinds.Hearing), "hearings");
+        Line("Orders", Open(FindingKinds.Order), "orders");
+        Line("Directions & deadlines", Open(FindingKinds.Direction, FindingKinds.Deadline), "directions");
+        Line("Timeline", Open(FindingKinds.TimelineEvent, FindingKinds.ChronologyEntry, FindingKinds.Safeguarding), "events");
+        Line("Complaints", Open(FindingKinds.Complaint), "complaints");
+        Line("Scott schedule", Open(FindingKinds.ScottItem), "scott");
+        Line("Copies & versions", OpenVersionGroups, "versions");
+        Line("No readable text", noText, "failed");
+        if (lines.Children.Count == 0) lines.Children.Add(Ui.Muted(running ? "Still checking…" : "Nothing new to review from this check.", 12));
+        sp.Children.Add(lines);
+        var actions = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        actions.Children.Add(Ui.Button("Open the Case map", "\uE81E", (_, _) => Shell.GoTo("casemap")));
+        if (AiService.Enabled)
+            actions.Children.Add(Ui.Button(CaseOverview.Latest(Db) == null ? "Write case overview" : "Refresh case overview", "\uE945", (_, _) => _ = Shell.WriteCaseOverviewAsync()));
+        sp.Children.Add(actions);
+        return Ui.Card(sp, new Thickness(0, 0, 0, 12));
     }
 
     private UIElement JobCard(ImportJob j)
@@ -368,7 +419,7 @@ public partial class ImportReviewView : UserControl
         sp.Children.Add(new TextBlock { Text = $"{j.RootName}  ·  {j.CreatedText}", FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         sp.Children.Add(Ui.Muted($"{(running ? "Running" : j.StateText)} · {j.PhaseText}" +
                                  (j.Model.Length > 0 ? $" · AI model {j.Model}" : "") +
-                                 (j.LastErrorCode is "AI_UNAVAILABLE" ? " · the AI couldn't be reached" : j.LastErrorCode is "AI_OFF" ? " · AI was switched off" : j.LastErrorCode is "AI_CLOUD_DECLINED" ? " · not sent to the cloud AI (you chose not to)" : ""), 12));
+                                 (j.LastErrorCode is "AI_UNAVAILABLE" ? " · the AI couldn't be reached" : j.LastErrorCode is "AI_OFF" ? " · AI was switched off" : j.LastErrorCode is "AI_CLOUD_DECLINED" ? " · not sent to the cloud AI (you chose not to)" : j.LastErrorCode is "AI_NOT_REQUESTED" ? " · CaseKeeper's own rules only (no AI)" : ""), 12));
         sp.Children.Add(Ui.Muted(BulkImportService.Summarise(counts), 11.5));
         var row = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
         int waiting = counts.GetValueOrDefault("a" + (int)AnalysisState.AwaitingAi);
@@ -633,6 +684,8 @@ public partial class ImportReviewView : UserControl
                     "calculationRule" => "Rule in the order", "wording" => null, "dateOfBirth" => "Date of birth", "dateOfBirthText" => null,
                     "orderType" => "Type of order", "madeBy" => "Made by", "contactOutcome" => "Outcome", "caseNumber" => "Case number",
                     "documentType" => "Type of document",
+                    "responseDue" => "Reply due", "responseDueText" => "Reply expected (as written)", "isResponse" => null,
+                    "contactDetails" => "Contact details", "allegedBy" => "Alleged by", "findingSought" => "Finding sought",
                     _ => CultureInfo.CurrentCulture.TextInfo.ToTitleCase(p.Name)
                 };
                 if (label == null) continue;
@@ -669,6 +722,10 @@ public partial class ImportReviewView : UserControl
             edit = true;
             if (FindingApprover.Blocker(f, draft) is { } still) { MessageBox.Show(owner, still, "Import review"); return; }
         }
+        if (!isNote && FindingApprover.DescribeUpdate(Db, draft) is { } update &&
+            MessageBox.Show(owner, update + "\n\nNothing already written is changed. You can undo this later.", "Add to an existing record",
+                MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
+            return;
         if (!isNote && FindingApprover.FindEquivalent(Db, f, draft) is { } dup &&
             MessageBox.Show(owner, dup + "\n\nAdd this as well anyway?", "Possible duplicate", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             return;
@@ -715,6 +772,8 @@ public partial class ImportReviewView : UserControl
                 return new PartyEditWindow(p) { Owner = owner }.ShowDialog() == true;
             case Complaint x:
                 return new ComplaintEditWindow(x, docs) { Owner = owner }.ShowDialog() == true;
+            case ScottItem s:
+                return new RecordDialog("Check and add this allegation to the Scott schedule", s, CaseModules.ScottFields(), docs) { Owner = owner }.ShowDialog() == true;
         }
         return false;
     }

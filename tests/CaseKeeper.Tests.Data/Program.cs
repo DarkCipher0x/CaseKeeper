@@ -54,6 +54,12 @@ INSERT INTO Events(EventDate,Title,EventType) VALUES('2026-10-02','Old event','O
         d.ExhibitRef = "AB1";
         db.UpdateDocument(d);
         Check(db.GetDocument(d.Id).ExhibitRef == "AB1", "new ExhibitRef column works on an upgraded library");
+        db.SetFileDates(d.Id, new DateTime(2026, 9, 2, 8, 0, 0), new DateTime(2026, 10, 3, 14, 2, 0), 7);
+        var dated = db.GetDocument(d.Id);
+        Check(dated.SourceModifiedAt == new DateTime(2026, 9, 2, 8, 0, 0) && dated.SavedAt == new DateTime(2026, 10, 3, 14, 2, 0) && dated.Revision == 7,
+            "0.7.0 file dates (last saved, revision) round-trip on an upgraded library");
+        db.SetFileDates(d.Id, null, null, null);
+        Check(db.GetDocument(d.Id).Revision == 7, "file dates: an empty value never wipes one already recorded");
 
         // ---- 2. records + audit trail
         var h = new Hearing { HearingDate = new DateTime(2026, 11, 3), HearingType = "Final hearing", Court = "Test" };

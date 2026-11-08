@@ -4,7 +4,11 @@ using System.Text.RegularExpressions;
 namespace CaseKeeper.Services.BulkImport;
 
 /// <summary>One document as the version check sees it: its readable text and the dates that say how new it is.</summary>
-public sealed record VersionInput(long DocumentId, string Title, string Text, DateTime? DocumentDate, DateTime? FileModified, string FileHash);
+/// <param name="SavedAt">When the file itself says it was last saved (PDF/Office/photo metadata).</param>
+/// <param name="Revision">The Office revision number, when there is one.</param>
+/// <param name="AddedAt">When it was added to CaseKeeper (shown in the edit history only, never used to rank).</param>
+public sealed record VersionInput(long DocumentId, string Title, string Text, DateTime? DocumentDate, DateTime? FileModified, string FileHash,
+    DateTime? SavedAt = null, int? Revision = null, DateTime? AddedAt = null);
 
 public enum VersionKind
 {
@@ -36,6 +40,28 @@ public sealed class VersionMember
     public string DateSource { get; init; } = "";
     /// <summary>Compared with the newest in the group; null for the newest itself.</summary>
     public DiffSummary Diff { get; init; }
+
+    // Edit history, for the review card: each piece of evidence about when this copy was last edited
+    public DateTime? DocumentDate { get; init; }
+    public DateTime? SavedAt { get; init; }
+    public int? Revision { get; init; }
+    public DateTime? FileModified { get; init; }
+    public DateTime? AddedAt { get; init; }
+
+    /// <summary>"dated 3 Oct 2026 · last saved 4 Oct 2026 14:02 · revision 7 · file changed … · added …"</summary>
+    public string History
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (DocumentDate is { } d) parts.Add($"dated {d:d MMM yyyy}");
+            if (SavedAt is { } s) parts.Add($"last saved {s:d MMM yyyy HH:mm}");
+            if (Revision is { } r) parts.Add($"revision {r}");
+            if (FileModified is { } f) parts.Add($"file changed {f:d MMM yyyy HH:mm}");
+            if (AddedAt is { } a && a > DateTime.MinValue) parts.Add($"added {a:d MMM yyyy}");
+            return string.Join(" · ", parts);
+        }
+    }
 }
 
 public sealed class VersionGroup
@@ -125,7 +151,13 @@ public static class VersionDetector
         foreach (var g in Enumerable.Range(0, n).GroupBy(Root).Where(g => g.Count() > 1))
         {
             var idx = g.ToList();
-            var ranked = idx.Select(i => (i, When(docs[i]))).OrderByDescending(t => t.Item2.Date ?? DateTime.MinValue)
+            // Latest edit: the document's own date, then when the file says it was last saved, then its Office revision,
+            // then when the file was last changed, then whichever has more in it
+            var ranked = idx.Select(i => (i, When(docs[i])))
+                .OrderByDescending(t => docs[t.i].DocumentDate?.Date ?? DateTime.MinValue)
+                .ThenByDescending(t => docs[t.i].SavedAt ?? DateTime.MinValue)
+                .ThenByDescending(t => docs[t.i].Revision ?? -1)
+                .ThenByDescending(t => docs[t.i].FileModified ?? DateTime.MinValue)
                 .ThenByDescending(t => sets[t.i].Count).ThenByDescending(t => docs[t.i].DocumentId).ToList();
             var newest = ranked[0].i;
             bool allSameHash = idx.Select(i => docs[i].FileHash).Distinct().Count() == 1 && !string.IsNullOrEmpty(docs[newest].FileHash);
@@ -136,30 +168,43 @@ public static class VersionDetector
                 DocumentId = docs[t.i].DocumentId, Title = docs[t.i].Title, Newest = t.i == newest,
                 Similarity = t.i == newest ? 1 : Similarity(sets[newest], sets[t.i]).Jaccard,
                 EffectiveDate = t.Item2.Date, DateSource = t.Item2.Source,
-                Diff = t.i == newest || kind == VersionKind.Exact ? null : Diff(docs[t.i].Text, docs[newest].Text)
+                Diff = t.i == newest || kind == VersionKind.Exact ? null : Diff(docs[t.i].Text, docs[newest].Text),
+                DocumentDate = docs[t.i].DocumentDate, SavedAt = docs[t.i].SavedAt, Revision = docs[t.i].Revision,
+                FileModified = docs[t.i].FileModified, AddedAt = docs[t.i].AddedAt
             }).ToList();
-            groups.Add(new VersionGroup { Kind = kind, Members = members, NewestReason = Reason(ranked, sets, kind) });
+            groups.Add(new VersionGroup { Kind = kind, Members = members, NewestReason = Reason(ranked.Select(t => docs[t.i]).ToList(), ranked.Select(t => sets[t.i].Count).ToList(), kind) });
         }
         return groups.OrderBy(g => g.Kind == VersionKind.Versions ? 0 : g.Kind == VersionKind.SameContent ? 1 : 2)
             .ThenByDescending(g => g.Members.Count).ToList();
     }
 
     private static (DateTime? Date, string Source) When(VersionInput d) =>
-        d.DocumentDate is { } dd ? (dd, "dated") : d.FileModified is { } fm ? (fm, "file last changed") : (null, "");
+        d.DocumentDate is { } dd ? (dd, "dated") : d.SavedAt is { } sv ? (sv, "last saved") : d.FileModified is { } fm ? (fm, "file last changed") : (null, "");
 
-    private static string Reason(List<(int i, (DateTime? Date, string Source) w)> ranked, HashSet<ulong>[] sets, VersionKind kind)
+    /// <summary>Says which piece of evidence put the newest first, comparing it with the runner-up.</summary>
+    public static string Reason(IReadOnlyList<VersionInput> ranked, IReadOnlyList<int> sizes, VersionKind kind)
     {
         if (kind == VersionKind.Exact) return "Identical files: keep any one.";
-        var a = ranked[0].w;
-        var b = ranked.Count > 1 ? ranked[1].w : default;
-        if (a.Date is { } da && b.Date is { } db && da.Date != db.Date)
-            return a.Source == b.Source
-                ? $"Newest: {a.Source} {da:d MMM yyyy}, the next is {db:d MMM yyyy}."
-                : $"Newest: {a.Source} {da:d MMM yyyy} (the next one: {b.Source} {db:d MMM yyyy}).";
-        if (a.Date is { } only && b.Date == null) return $"Newest: {a.Source} {only:d MMM yyyy}; the others have no date.";
-        return sets[ranked[0].i].Count > (ranked.Count > 1 ? sets[ranked[1].i].Count : 0)
-            ? "No dates tell them apart, so the longest is taken as the latest. Check before relying on it."
-            : "No dates tell them apart. Check which is the latest yourself.";
+        var a = ranked[0];
+        var b = ranked.Count > 1 ? ranked[1] : null;
+        if (b == null) return "";
+        if (a.DocumentDate is { } da && b.DocumentDate is { } db && da.Date != db.Date)
+            return $"Newest: dated {da:d MMM yyyy}, the next is dated {db:d MMM yyyy}.";
+        if (a.DocumentDate is { } only && b.DocumentDate == null && a.SavedAt == null)
+            return $"Newest: dated {only:d MMM yyyy}; the others have no date.";
+        var sameDay = a.DocumentDate is { } d1 && b.DocumentDate is { } d2 && d1.Date == d2.Date ? $"Both are dated {d1:d MMM yyyy}. " : "";
+        if (a.SavedAt is { } sa && b.SavedAt is { } sb && sa != sb)
+            return $"{sameDay}Newest: last saved {sa:d MMM yyyy HH:mm} (inside the file); the next was saved {sb:d MMM yyyy HH:mm}.";
+        if (a.SavedAt is { } sOnly && b.SavedAt == null)
+            return $"{sameDay}Newest: last saved {sOnly:d MMM yyyy HH:mm} (inside the file); the others don't say when they were saved.";
+        if (a.Revision is { } ra && b.Revision is { } rb && ra != rb)
+            return $"{sameDay}Newest: revision {ra} of the file, the next is revision {rb}.";
+        if (a.FileModified is { } fa && b.FileModified is { } fb && fa != fb)
+            return $"{sameDay}Newest: the file was last changed {fa:d MMM yyyy HH:mm}, the next {fb:d MMM yyyy HH:mm}. " +
+                   "A file's \"changed\" time can move when it's copied, so check before relying on it.";
+        return sizes[0] > (sizes.Count > 1 ? sizes[1] : 0)
+            ? $"{sameDay}Nothing in the dates tells them apart, so the longest is taken as the latest. Check before relying on it."
+            : $"{sameDay}Nothing in the dates tells them apart. Check which is the latest yourself.";
     }
 
     // ------------------------------------------------------------------ similarity

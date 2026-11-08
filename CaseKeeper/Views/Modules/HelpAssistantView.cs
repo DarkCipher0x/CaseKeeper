@@ -161,7 +161,7 @@ public class HelpAssistantView : UserControl
             var system = BuildSystemPrompt(question, screen);
             var turns = _history.TakeLast(8).ToList();
             turns.Add(("user", question));
-            App.Library.Db.Audit("ai.help", "ai", null, $"Help assistant question ({AiService.ActiveModel})", $"{question.Length} characters (no case data sent)");
+            App.Library.Db.Audit("ai.help", "ai", null, $"Help assistant question ({AiService.ActiveModel})", $"{question.Length} characters, plus library counts (no titles, names or document content sent)");
             answer = await AiService.ChatAsync(system, turns, piece => Dispatcher.BeginInvoke(() =>
             {
                 body.Text += piece;
@@ -204,6 +204,12 @@ public class HelpAssistantView : UserControl
         sb.AppendLine($"The person is using CaseKeeper {MainWindow.AppVersion} in {(MainWindow.Shell?.ProfessionalMode == true ? "Professional" : "Simple")} mode" +
                       (string.IsNullOrWhiteSpace(screen) ? "." : $", and was last on the '{screen}' screen."));
         sb.AppendLine($"AI features are {(AiService.Enabled ? "on" : "off")}. Password protection is {(App.Library.Vault.IsEncrypted ? "on" : "off")}.");
+        // What's in the library, as numbers only (no titles, names or content), so the assistant can suggest the next step
+        try { sb.AppendLine().Append(Services.BulkImport.LibraryCheck.DescribeForAssistant(Services.BulkImport.LibraryCheck.Count(App.Library.Db))); }
+        catch (Exception ex) { AppLog.Warn("AI", "Couldn't count the library for the assistant", ex); }
+        sb.AppendLine("When the person wants help organising, use these counts to suggest the most useful next step (for example (go:librarycheck) when " +
+                      "documents are uncategorised or a check has never run, (go:review) when suggestions are waiting, (go:casemap) to see the case laid out), " +
+                      "with a link. You never change anything yourself: everything happens in the app's screens and through Import review approval.");
         sb.AppendLine();
         sb.Append(HelpKnowledge.BuildContext(question, Math.Max(2500, AiService.ChunkChars / 3)));
         return sb.ToString();

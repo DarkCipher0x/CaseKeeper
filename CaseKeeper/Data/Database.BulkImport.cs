@@ -159,7 +159,13 @@ public partial class Database
     /// analysis are marked as replaced (kept, not deleted); a new suggestion matching one the person already
     /// approved or rejected is not added again. Returns how many were added.
     /// </summary>
-    public int ReplaceFindings(long documentId, IReadOnlyList<AiFinding> fresh)
+    public int ReplaceFindings(long documentId, IReadOnlyList<AiFinding> fresh) => ReplaceFindings(documentId, fresh, null);
+
+    /// <summary>
+    /// As above, but only for the given kinds (a Library check that fills some sections): undecided suggestions of
+    /// other kinds are left exactly as they were.
+    /// </summary>
+    public int ReplaceFindings(long documentId, IReadOnlyList<AiFinding> fresh, IReadOnlyCollection<string> kinds)
     {
         var map = MapOf(typeof(AiFinding));
         using var c = Open();
@@ -172,8 +178,19 @@ public partial class Database
             using var r = cmd.ExecuteReader();
             while (r.Read()) decided.Add(r[0] as string ?? "");
         }
-        Exec(c, "UPDATE AiFindings SET Status=$s WHERE DocumentId=$d AND Status IN (0,3) AND Kind<>$k",
-            ("$s", (int)FindingStatus.Superseded), ("$d", documentId), ("$k", FindingKinds.Conflict));
+        if (kinds == null)
+            Exec(c, "UPDATE AiFindings SET Status=$s WHERE DocumentId=$d AND Status IN (0,3) AND Kind<>$k",
+                ("$s", (int)FindingStatus.Superseded), ("$d", documentId), ("$k", FindingKinds.Conflict));
+        else
+        {
+            var scoped = kinds.Where(k => k != FindingKinds.Conflict).ToList();
+            if (scoped.Count > 0)
+            {
+                var args = new List<(string, object)> { ("$s", (int)FindingStatus.Superseded), ("$d", documentId) };
+                args.AddRange(scoped.Select((k, i) => ("$k" + i, (object)k)));
+                Exec(c, $"UPDATE AiFindings SET Status=$s WHERE DocumentId=$d AND Status IN (0,3) AND Kind IN ({string.Join(",", scoped.Select((_, i) => "$k" + i))})", args.ToArray());
+            }
+        }
         int added = 0;
         foreach (var f in fresh)
         {

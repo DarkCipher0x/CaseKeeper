@@ -170,7 +170,10 @@ static class Program
                      ("The AI analysing takes a very long time, can I speed it up?", "faster"), ("Which AI model is best for importing a folder?", "faster"),
                      ("How do I use Claude with my Anthropic API key?", "Claude or ChatGPT"), ("Can I use OpenAI on Azure Foundry?", "Microsoft Foundry"),
                      ("What gets sent to the cloud AI, is it masked?", "masking"), ("Which of these documents is the newest version?", "versions"),
-                     ("How do I install Ollama?", "local AI")
+                     ("How do I install Ollama?", "local AI"),
+                     ("Can you check and organise my whole library?", "whole library"), ("How do I sort out everything I have already?", "whole library"),
+                     ("Show me how my case is laid out", "Case map"), ("Is there a matrix view of my case?", "Case map"),
+                     ("How do I put complaints in the Complaints section?", "complaints"), ("What should I organise next?", "organise next")
                  })
         {
             var m = HelpKnowledge.MatchRecipes(q).FirstOrDefault();
@@ -179,6 +182,10 @@ static class Program
         var (bulkText, bulkLinks) = HelpKnowledge.Finish("Use the folder import. [Open Import review](go:review)", "How do I import an existing case folder?");
         Check(bulkLinks[0].Target == "bulkimport" && bulkLinks.Any(l => l.Target == "review"), "help: the Bulk Case Import button comes first for folder questions");
         Check(HelpKnowledge.AppMap.Contains("(go:bulkimport)") && HelpKnowledge.AppMap.Contains("(guide:app.bulkimport)"), "help: the app map lists the Bulk Case Import links");
+        Check(new[] { "(go:librarycheck)", "(go:casemap)", "(go:overview)", "(guide:app.librarycheck)", "(guide:app.casemap)" }.All(HelpKnowledge.AppMap.Contains) &&
+              new[] { "librarycheck", "casemap", "overview" }.All(HelpKnowledge.Screens.ContainsKey), "help: the library check and Case map links are listed and valid");
+        Check(CaseKeeper.Services.Guide.GuideContent.All.Any(a => a.Id == "app.librarycheck") && CaseKeeper.Services.Guide.GuideContent.All.Any(a => a.Id == "app.casemap"),
+            "guide: the library check and Case map articles exist");
         var (strayText, stray) = HelpKnowledge.Finish("1. No, it stays on this computer.\n\nLinks: [Open Letters & templates](go:letters)", "Does my case data leave my computer?");
         Check(!stray.Any(l => l.Target == "letters") && stray.Any(l => l.Target == "ai") && !strayText.Contains("Letters"),
             "help: a link the AI copied from its instructions that has nothing to do with the question is dropped");
