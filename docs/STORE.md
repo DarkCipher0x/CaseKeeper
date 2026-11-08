@@ -70,7 +70,7 @@ page, say: no telemetry and no data collected by the developer; data stays on th
 chooses a cloud AI provider in Settings → AI, in which case the text of documents they analyse is
 sent to that provider (Anthropic, OpenAI or the user's own Microsoft Foundry resource) under the
 provider's terms, masked by default and only after consent. The privacy policy URL must cover this
-before 0.6.0 is submitted.
+before 0.6.0 or later is submitted (the website's privacy page does, from 8 November 2026).
 
 - The package contains only the program, the user guide and the patch notes.
 - `build-store.ps1` refuses to produce a package if any of CaseKeeper's own files contain this PC's
@@ -242,7 +242,21 @@ matters, but the app itself shows none.
   everything about the website version's in-app updater (*Check for updates*, *Download and verify*,
   installing, update sources, GitHub, signing keys) and the *For developers* notes. A Store listing
   that describes downloading and installing updates from outside the Store invites a policy 10.2.2
-  rejection, even though the Store copy can't do it. For 0.5.1 (and 0.5.0), use:
+  rejection, even though the Store copy can't do it. For 0.6.1 (the first 0.6 version in the Store;
+  0.6.0 was never submitted), use:
+
+  > - Choose your AI in Settings → AI: the local AI on this PC (Ollama), or Anthropic (Claude),
+  >   OpenAI (GPT) or either on Microsoft Foundry with your own key. Pick the model and reasoning
+  >   effort. Cloud AI is off until you choose it.
+  > - Before anything is sent to a cloud AI, a review screen shows where it goes and what's
+  >   sensitive. Names and personal details are masked by default.
+  > - New Duplicates & versions review in Bulk Case Import: finds copies and drafts of the same
+  >   document and shows which has the newest edits.
+  > - Encrypted files are now bound to their own names, for stronger protection.
+  > - Sharper text on high-resolution and mixed-scaling monitors.
+  > - Reliability and security improvements.
+
+  For 0.5.1 (and 0.5.0), the text was:
 
   > - Settings → Updates now explains that the Microsoft Store keeps CaseKeeper up to date
   >   (Microsoft Store → Library → Get updates).

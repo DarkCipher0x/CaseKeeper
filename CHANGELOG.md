@@ -14,6 +14,26 @@ folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\Cas
 
 ---
 
+## v0.6.1 — 8 November 2026
+
+A maintenance release. Upgrade over any earlier version: nothing you already have is changed. From 0.5.0,
+*Settings → Updates* can install it for you.
+
+### Fixes
+- **Sharp on every screen.** CaseKeeper is now per-monitor DPI aware: windows are redrawn at the scaling of the
+  monitor they're on, so text and icons stay crisp on high-resolution displays and when a window moves between
+  screens with different scaling (Windows *Display → Scale*). Before, Windows stretched the app on some monitors,
+  which could look blurry.
+
+### Components
+- No changes. .NET 10.0.14, the latest security release. No known vulnerabilities in any package.
+
+### For developers
+- `CaseKeeperpp.manifest` is now embedded in the exe: per-monitor DPI awareness (v2), `asInvoker`, Windows 10/11.
+  This clears the Windows App Certification Kit's High-DPI warning for the Store package.
+
+---
+
 ## v0.6.0 — 8 November 2026
 
 A feature and security release. Bulk Case Import and every AI tool can now use a cloud AI (Anthropic, OpenAI, or

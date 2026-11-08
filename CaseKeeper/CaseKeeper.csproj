@@ -11,13 +11,15 @@
     <AssemblyTitle>CaseKeeper</AssemblyTitle>
     <Product>CaseKeeper - Family Court Document Manager</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Per-monitor DPI aware (v2), runs as the signed-in user: see app.manifest -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
 
     <!-- The single place the version is set. The installer script reads it from the built exe,
          so bumping this number here is all that's needed for a new release. -->
-    <Version>0.6.0</Version>
-    <AssemblyVersion>0.6.0.0</AssemblyVersion>
-    <FileVersion>0.6.0.0</FileVersion>
-    <InformationalVersion>0.6.0</InformationalVersion>
+    <Version>0.6.1</Version>
+    <AssemblyVersion>0.6.1.0</AssemblyVersion>
+    <FileVersion>0.6.1.0</FileVersion>
+    <InformationalVersion>0.6.1</InformationalVersion>
     <!-- Publisher brand only. No personal names, e-mail addresses or machine details anywhere in the build. -->
     <Company>DarkCipher Systems</Company>
     <Authors>DarkCipher Systems</Authors>

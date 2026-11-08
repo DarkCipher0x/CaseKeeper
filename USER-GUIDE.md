@@ -678,6 +678,7 @@ copies your set-up (no personal or case information) for a support request.
 | *Check for updates*: "…signature doesn't match…" or "…no signature…" | The update information wasn't signed by CaseKeeper's release keys, so nothing is offered. That is the protection working: don't install anything from that source by hand. Try again later, or download from darkciphersystems.com and check the SHA-256. |
 | An update "didn't complete" | The setup program was closed or Windows permission wasn't given. Your library is unchanged. Run *Check for updates* again, or download the installer from the website. |
 | CaseKeeper won't open a document and shows it in File Explorer instead | It's a type of file Windows would run as a program (for example `.exe`, `.js`, `.lnk`), so CaseKeeper won't start it. Check where it came from before opening it yourself. |
+| Text looks blurry, or too big or small, on one monitor | From 0.6.1 CaseKeeper redraws itself at each monitor's scaling. If it still looks wrong after you change *Windows Settings → System → Display → Scale*, close CaseKeeper and open it again. |
 
 ## 24. Where your data is kept, and removing it
 
