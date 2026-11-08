@@ -181,9 +181,20 @@ Get-AppxPackage *CaseKeeper* | Remove-AppxPackage
 Neither touches the library. The website copy can stay installed alongside the Store copy; each
 has its own library unless you point one at the other's (*Settings → Your library*).
 
-**Optional: the Windows App Certification Kit.** This runs the same automated tests the Store runs.
-It comes with the full Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`). Open
-*Windows App Cert Kit*, choose **Validate Store App**, and pick the `.msix`.
+**Run the Windows App Certification Kit before every submission.** It runs the same automated tests
+the Store runs: package and manifest checks, blocked programs, launch and crash tests, and binary
+security checks. It comes with the Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`).
+From an **administrator** PowerShell in the repository folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\run-wack.ps1
+```
+
+It tests the newest `dist\<version>\CaseKeeper-v<version>-x64.msix`. It trusts the test certificate
+only for the run, then removes the trust, the test install and the empty library its launch test
+creates. A real Store copy and a library holding documents are never touched. It prints each failed
+test with Microsoft's message, and the full report goes to `dist\<version>\wack-report.xml`. Don't
+submit unless it says **Overall result: PASS**.
 
 ## Step 5: Submit
 
@@ -217,7 +228,17 @@ matters, but the app itself shows none.
   > Your case library is kept on your PC in your user folder (%USERPROFILE%\CaseKeeper), never
   > uploaded. Uninstalling keeps it, so reinstalling picks up where you left off. To delete it, use
   > Settings → Factory reset → Remove all CaseKeeper data before uninstalling.
-- What's new: paste the newest section of `CHANGELOG.md`.
+- What's new: write it for **Store users**, from the newest section of `CHANGELOG.md`. Leave out
+  everything about the website version's in-app updater (*Check for updates*, *Download and verify*,
+  installing, update sources, GitHub, signing keys) and the *For developers* notes. A Store listing
+  that describes downloading and installing updates from outside the Store invites a policy 10.2.2
+  rejection, even though the Store copy can't do it. For 0.5.1 (and 0.5.0), use:
+
+  > - Settings → Updates now explains that the Microsoft Store keeps CaseKeeper up to date
+  >   (Microsoft Store → Library → Get updates).
+  > - New Guide & FAQ article, *Updating CaseKeeper*, and a matching help-assistant answer.
+  > - Remove all CaseKeeper data now also clears any temporary update files.
+  > - Reliability and security improvements.
 - Screenshots: at least one, ideally 4–6, at 1366×768 or larger. Use a **demo library with made-up
   names**. Never use real case material. A ready set (a fictional case, 1586×933) is in
   `assets\store-screenshots`. Don't use a Settings screenshot: it shows the PC's audit-trail code.
@@ -243,9 +264,11 @@ submission, delete it: that capability is no longer in the package.
 > No account or sign-in is needed. On first run CaseKeeper creates an empty local library in
 > %USERPROFILE%\CaseKeeper. To test: Documents → Add documents, choose any PDF or image. The AI
 > features are optional and need a local Ollama server (https://ollama.com); without one the app
-> says the AI is unavailable and everything else works. The app sends no data over the internet.
-> Its Settings → Updates section is switched off in the Store version (updates come only from the
-> Store), so it never downloads or runs code from anywhere else.
+> says the AI is unavailable and everything else works. The Store version sends nothing over the
+> internet: its only network use is to that local Ollama server, if the person sets one up, which
+> downloads AI models (data, not code) only when the person asks. Its Settings → Updates section is
+> switched off in the Store version and only says that the Store delivers updates; the app never
+> downloads or runs code from anywhere else.
 >
 > This version no longer uses the unvirtualizedResources capability. The user's library is kept in
 > %USERPROFILE%\CaseKeeper so that uninstalling never destroys their legal evidence. Users are told
@@ -305,4 +328,5 @@ this guide exists.
 | Partner Center: *"The package identity doesn't match"* | `store-identity.json` doesn't match **Product identity**. Copy the values again, exactly. |
 | Partner Center: *"Version must be higher"* | Bump `<Version>` in the csproj and rebuild. |
 | Double-clicking the `.msix` says the publisher isn't trusted | That's expected for a test build. See [Step 4](#step-4-try-the-package-before-submitting-it). |
-| The Store copy shows an empty library | The library was moved. *Settings → Your library* shows where; the pointer file in `%APPDATA%\CaseKeeper` is shared by both copies. If it is still empty on Windows 11, check `%LOCALAPPDATA%\Packages\<package>\LocalCache` for redirected files: that means the manifest's exclusions weren't applied. |
+| The Store copy shows an empty library | Each copy has its own library: the Store copy uses `%USERPROFILE%\CaseKeeper`, the website copy `%LOCALAPPDATA%\CaseKeeper`. *Settings → Your library* shows which one is open, and **Use a different library…** switches to the other. The first start of a Store copy offers to copy a website library across. |
+| `tools\run-wack.ps1` reports a failure | Fix what the message names, rebuild with `build-release.ps1`, and run it again. Don't submit a package that fails it. |

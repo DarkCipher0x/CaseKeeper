@@ -14,6 +14,30 @@ folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\Cas
 
 ---
 
+## v0.5.1 — 8 November 2026
+
+A maintenance release that tightens the Microsoft Store version and the release tools. Upgrade over any earlier
+version: nothing you already have is changed. From 0.5.0, *Settings → Updates* can install it for you.
+
+### Fixes
+- In a Microsoft Store copy, the update download and install steps now refuse by themselves, as well as the update
+  check. They could never be reached there, because the check already refuses; this is an extra safeguard, so a
+  Store copy can never download or run a setup program.
+
+### Components
+- No changes. .NET 10.0.14, the latest security release. No known vulnerabilities in any package.
+
+### For developers
+- `tools\run-wack.ps1` runs Microsoft's Windows App Certification Kit on the Store package from an administrator
+  PowerShell. It trusts the test certificate only for the run and cleans up afterwards. Run it before every Store
+  submission (docs\STORE.md).
+- `tools\sign-update.ps1 -Escrow` checks that the folder exists before asking for the password.
+- Five new tests prove a Store copy never contacts an update server, downloads, installs or runs automatic checks.
+- docs\STORE.md: Store-only *What's new* wording (no in-app updater text), certification notes that describe the
+  optional local Ollama accurately, and the Certification Kit step.
+
+---
+
 ## v0.5.0 — 8 November 2026
 
 CaseKeeper can now update itself. Upgrade over any earlier version: nothing you already have is changed.

@@ -28,7 +28,10 @@ public static class AppPackage
     /// <summary>The package family name when installed from the Store, otherwise null.</summary>
     public static string FamilyName => Family.Value;
 
-    public static bool IsPackaged => FamilyName != null;
+    public static bool IsPackaged => PackagedOverride ?? FamilyName != null;
+
+    /// <summary>Tests only: behave as a Store copy (true) or a website copy (false). Null in the app.</summary>
+    internal static bool? PackagedOverride { get; set; }
 
     private static string ReadFamilyName()
     {

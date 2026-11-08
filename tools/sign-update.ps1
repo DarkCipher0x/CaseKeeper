@@ -175,6 +175,8 @@ if ($ShowPublicKey) {
 if ($Escrow) {
     LoadBc
     if (Test-Path $Escrow) { throw "$Escrow already exists; choose a new file." }
+    $escrowDir = Split-Path -Parent ([IO.Path]::GetFullPath($Escrow))
+    if (-not (Test-Path -LiteralPath $escrowDir -PathType Container)) { throw "The folder $escrowDir doesn't exist (is the USB drive plugged in, and is that its drive letter?)." }
     $ecBlob = EcBlob; $seed = PqSeed
     if ($null -eq $ecBlob -or $null -eq $seed) { throw "This Windows account has no CaseKeeper release keys to escrow." }
     $pw = ReadPassword 'Escrow password (at least 16 characters; keep it apart from the file)'

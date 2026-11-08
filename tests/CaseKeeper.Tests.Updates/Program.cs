@@ -377,6 +377,27 @@ static class Program
         }
 
         // ---- the Store copy and a build without keys ------------------------------------------------------------------
+        // Store policy 10.2.2: a Store copy never contacts an update server, downloads or runs a setup program.
+        AppPackage.PackagedOverride = true;
+        try
+        {
+            var store = new Stub();
+            store.Text(Updater.DefaultEndpoint, Manifest());
+            var (si, sm) = await Updater.CheckAsync(CancellationToken.None, store);
+            Check(!Updater.Enabled && si == null && sm == Updater.DisabledMessage && sm.Contains("Microsoft Store"), "Store copy: the updater is off and says the Store delivers updates");
+            Check(store.Seen.Count == 0, "Store copy: checking never contacts the internet");
+            Updater.Settings.AutoCheck = true; Updater.Settings.LastCheck = DateTime.MinValue;
+            Check(!Updater.AutoCheckDue, "Store copy: automatic checks never run, even if switched on in copied settings");
+            Updater.Settings.AutoCheck = false;
+            bool dlThrew = false;
+            try { await Updater.DownloadAndVerifyAsync(info, null, CancellationToken.None, store); } catch (InvalidOperationException) { dlThrew = true; }
+            Check(dlThrew && store.Seen.Count == 0, "Store copy: downloading a setup program is refused without contacting anyone");
+            bool runThrew = false;
+            try { Updater.LaunchInstaller(path, info); } catch (InvalidOperationException) { runThrew = true; }
+            Check(runThrew && Updater.Settings.PendingVersion == "", "Store copy: running a setup program is refused");
+        }
+        finally { AppPackage.PackagedOverride = null; }
+
         Updater.TestKeys = null;
         Check(Updater.Enabled == (!AppPackage.IsPackaged), "Store copy: off when installed from the Store (this test isn't), on for the website copy");
         Check(Updater.DisabledMessage.Length > 0, "Store copy: says why");

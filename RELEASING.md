@@ -80,9 +80,11 @@ and the first push opens a sign-in window once.
 
 4. **By hand afterwards:** put the installer, source zip and SHA-256s on the website, with the
    installer, `update.json`, `update.json.sig` and `update.json.pq.sig` together in
-   `/downloads/casekeeper/` (where installed copies look), and upload the `.msix` in Partner Center
-   as a new Store submission (see [docs/STORE.md](docs/STORE.md)). The script prints this reminder
-   at the end.
+   `/downloads/casekeeper/` (where installed copies look). For the Store, first run
+   `tools\run-wack.ps1` from an administrator PowerShell (Microsoft's certification tests; submit
+   only on **PASS**), then upload the `.msix` in Partner Center as a new Store submission, with
+   Store-specific *What's new* text (see [docs/STORE.md](docs/STORE.md)). The script prints this
+   reminder at the end.
 
 ## Signed updates
 

@@ -234,5 +234,6 @@ Write-Host 'Still to do by hand:' -ForegroundColor Cyan
 Write-Host "  - put the installer, update.json with its two .sig files, the source zip and SHA-256s from dist\$version\ on the website"
 Write-Host "    (installer and update.json files in /downloads/casekeeper/ - the in-app updater reads them there)"
 if (Get-ChildItem $out -Filter '*.msix' -ErrorAction SilentlyContinue) {
-    Write-Host '  - upload the .msix in Partner Center (a new Store submission; see docs\STORE.md)'
+    Write-Host '  - Store: run tools\run-wack.ps1 as administrator (submit only on PASS), then upload the .msix in'
+    Write-Host '    Partner Center with Store-only "What''s new" text (a new Store submission; see docs\STORE.md)'
 }

@@ -429,6 +429,8 @@ public static class Updater
     /// none otherwise), then verifies. A download that fails any check is deleted.</summary>
     public static async Task<(string? Path, VerifyResult Result)> DownloadAndVerifyAsync(UpdateInfo info, IProgress<double>? progress, CancellationToken ct, HttpMessageHandler? handler = null)
     {
+        // Belt and braces: a Store copy never gets an UpdateInfo (CheckAsync refuses), but never download either.
+        if (!Enabled) throw new InvalidOperationException(DisabledMessage);
         var dir = Path.Combine(WorkFolder, "dl-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(6)).ToLowerInvariant());
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, info.FileName);
@@ -501,6 +503,8 @@ public static class Updater
     /// then closes CaseKeeper.</summary>
     public static void LaunchInstaller(string path, UpdateInfo info)
     {
+        // A Store copy must never run code from outside the Store (Store policy 10.2.2).
+        if (!Enabled) throw new InvalidOperationException(DisabledMessage);
         TryDelete(StagingDir);
         Directory.CreateDirectory(StagingDir);
         var staged = Path.Combine(StagingDir, info.FileName);
