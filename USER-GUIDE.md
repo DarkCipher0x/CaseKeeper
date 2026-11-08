@@ -22,7 +22,7 @@ computer: documents, hearings and orders, deadlines, a contact log, costs, lette
 12. [Costs and the Scott schedule](#12-costs-and-the-scott-schedule)
 13. [Letters, templates and letterheads](#13-letters-templates-and-letterheads)
 14. [Bundles and reports](#14-bundles-and-reports)
-15. [AI analysis with Ollama](#15-ai-analysis-with-ollama)
+15. [AI analysis: local or cloud](#15-ai-analysis)
 16. [Guide & FAQ](#16-guide--faq)
 17. [Exports](#17-exports)
 18. [Audit trail and logs](#18-audit-trail-and-logs)
@@ -155,8 +155,9 @@ date unless you choose it.
 ### How the AI suggestions work
 
 - CaseKeeper first matches each document to its own category catalogue using form codes, titles and wording, then
-  gives your local AI a short list to choose from. The AI can only choose one of those categories, or *Unknown*.
-- The AI must answer in a strict format (Ollama's structured outputs, checked again by CaseKeeper). Every suggestion
+  gives the AI (your local AI, or the cloud AI you chose – see [AI providers](#ai-providers-local-or-cloud)) a short
+  list to choose from. The AI can only choose one of those categories, or *Unknown*.
+- The AI must answer in a strict format (structured outputs, checked again by CaseKeeper). Every suggestion
   must quote the words it relies on and give the page. If the quote isn't on that page, or a date isn't actually
   written in the document, the suggestion is flagged and its confidence lowered; a date that isn't in the document is
   removed, never guessed. Names the document doesn't contain are dropped.
@@ -204,10 +205,54 @@ Photos with little writing on them (receipts, screenshots) get a quick reading �
 quick reading, when a form code settles the category for certain (an S7 report, for example), CaseKeeper doesn't ask
 the AI at all; the suggestion is marked *CaseKeeper rules* and still waits for your approval.
 
+### Reading the import with a cloud AI
+
+In **Review options… → AI SERVICE** you can choose which AI reads the import: the one set in *Settings → AI*, the
+local AI, or a cloud service (Anthropic, OpenAI, or either on Microsoft Foundry), with its model and reasoning effort.
+Cloud models read large folders much faster than most PCs; the default is the quick, low-cost model at low effort.
+
+Before anything is sent, the **Before anything is sent** screen shows:
+
+- **where it goes** – the service and its address (always HTTPS), and what the service's terms say about keeping it;
+- how many documents, and roughly how much text;
+- **what will be masked** in this batch – names, e-mail addresses, phone numbers and so on, with counts;
+- **sensitive subjects** found in the batch, such as children, health, money or police;
+- **documents that couldn't be masked well** (for example a badly scanned page, or many names CaseKeeper didn't
+  recognise). For these, choose: **read them with the local AI on this PC instead**, **skip them for now** (they
+  wait in Import review as *not sent*), or **send them anyway**.
+
+Choose **Send to …** to go ahead, or **Cancel**: then nothing is sent and the documents wait as *Waiting – AI not
+available*. Your choice is recorded in the audit trail with the service, address and whether masking was on – never
+any content. **Don't show this again for …** skips the screen for that service; *Settings → AI → Ask again before
+sending* brings it back. More in [What's sent to a cloud AI, and masking](#whats-sent-to-a-cloud-ai-and-masking).
+
+### Duplicates and versions
+
+**Import review → Duplicates & versions** finds copies and versions of the same document among *all* your
+documents, by comparing the words inside them – not just the files. So it finds:
+
+- **Exact copies** – the same file twice;
+- **Same content** – for example a PDF and a Word copy of one letter;
+- **Versions** – a draft and its final version, or a statement with later edits.
+
+Each group shows the **newest first**, with the reason (*dated 3 Oct 2026*, or *last changed most recently* when no
+date is written in the documents), and for each older one what the newest added or removed. **What changed** opens
+a sentence-by-sentence comparison: added text in green, removed text struck through in red.
+
+Then choose **Keep newest, tag the others as older** (tags *Latest version* and *Older version*), **Keep all, link as
+versions** (tag *Version*) or **Not related**. **Nothing is ever deleted**, every choice is in the audit trail, and
+**Undo** reverses it. Very short documents (a few words) aren't compared.
+
+### Treat with care
+
+Whichever AI you use, CaseKeeper's own checks add a **Treat with care** note under *Conflicts & checks* for documents
+that deserve a second look: Office files that can contain macros (`.docm`, `.xlsm`…), scanned pages whose text came
+out garbled, and a date written in a document that is later than the file itself was last changed.
+
 ### Import review
 
 **Import review** (sidebar, under Papers) holds every suggestion until you decide. Sections on the left group them:
-Categorise documents, Unknown / needs a category, Document details, Hearings, Events & timeline, Orders, Directions &
+Summary, Duplicates & versions, Categorise documents, Unknown / needs a category, Document details, Hearings, Events & timeline, Orders, Directions &
 deadlines, Tasks & missing documents, Contact, Parties & children, Complaints, Conflicts & checks, Low confidence,
 Failed or not analysed, and the decided ones (Approved, Applied by AI rule, Deferred, Rejected). Filter by confidence,
 document, dates or warnings, or search.
@@ -234,7 +279,8 @@ in Uncategorised; it never adds hearings, dates, deadlines or any other record. 
 *Applied by AI rule*, and can be undone.
 
 **If the AI isn't available,** the import still finishes, documents show *Waiting – AI not available*, and
-CaseKeeper's own rules still suggest categories from form codes. Start Ollama, then use **Analyse N waiting** next to
+CaseKeeper's own rules still suggest categories from form codes. Start Ollama (or, for a cloud AI, check you're
+online and the key in *Settings → AI*), then use **Analyse N waiting** next to
 the import in *Import review → Summary*. **Retry N failed** and **Retry selected** (under *Failed or not analysed*)
 retry analyses that failed. A document is only analysed again if its text, the prompt, the model or the format has
 changed – or you ask.
@@ -242,8 +288,9 @@ changed – or you ask.
 **Already in your library?** Right-click documents → *Analyse with AI* → **Organise – suggest a category, dates and
 records for review…** sends them through the same analysis, with suggestions in Import review.
 
-**Privacy.** Everything happens on your computer; the AI only talks to your own Ollama server. Import records and
-suggestions are stored in your library (encrypted if it's protected) and included in backups. Logs never contain
+**Privacy.** With the local AI everything happens on your computer; the AI only talks to your own Ollama server.
+With a cloud AI, the text of the documents being analysed goes to the service you chose – masked by default, and only
+after you agree on the *Before anything is sent* screen. Import records and suggestions are stored in your library (encrypted if it's protected) and included in backups. Logs never contain
 document text, file names or folder paths. The AI is an assistant, not an authority: it can be wrong, and it does not
 give legal advice. The instructions it follows can be edited in *Settings → AI → Prompts → Bulk Case Import*.
 
@@ -375,18 +422,79 @@ and bookmarks, following the general shape of Practice Direction 27A – or a **
 documents and notes without the full documents. Right-click the bundle list to move items between sections,
 reorder or remove them. Always follow the court's own directions about bundles.
 
-## 15. AI analysis with Ollama
+## 15. AI analysis
 
-CaseKeeper can use **Ollama**, a free program that runs AI models on your own computer (or another computer on
-your network), so your documents don't go to an online service. AI is **off** until you switch it on.
+AI is **off** until you switch it on. CaseKeeper can use:
 
-**Set-up**
+- **Ollama**, a free program that runs AI models on your own computer (or another computer on your network), so your
+  documents don't go to an online service; or
+- a **cloud AI** you choose: **Anthropic (Claude)**, **OpenAI (GPT)**, **Claude on Microsoft Foundry** or **OpenAI on
+  Microsoft Foundry** (models deployed in your own Azure subscription). You need your own account and API key with
+  that service, and it charges you for what you use.
 
-1. Install Ollama from ollama.com and start it.
-2. Download a model, e.g. run `ollama pull llama3.1` in a terminal. Larger models give better results but need
-   more memory and are slower; on a laptop choose a smaller one.
-3. *Settings → AI*: tick **Use AI features**, check the address (usually `http://localhost:11434`), press **Test
-   connection** and choose the model.
+### AI providers: local or cloud
+
+Choose in *Settings → AI → Which AI to use*. Bulk import can use a different one (*Import review → Review options… →
+AI SERVICE*).
+
+**Local AI (Ollama) – one click**
+
+1. Choose **Local AI on this PC (Ollama)**.
+2. Click **Install Ollama** (the website version installs it with Windows Package Manager, after asking) or **Get
+   Ollama** (the Microsoft Store version opens its download page, because Store apps don't run installers).
+3. Click **Set up the local AI**: CaseKeeper finds Ollama, downloads the quick model **gemma3:4b** (about 3 GB) if no
+   model is installed, chooses it and switches AI on.
+
+Or by hand: download a model (e.g. `ollama pull llama3.1`), tick **Use AI features**, check the address (usually
+`http://localhost:11434`), press **Test connection** and choose the model. Larger models give better results but need
+more memory and are slower.
+
+**Cloud AI – one click**
+
+1. Get an API key: Anthropic (platform.claude.com), OpenAI (platform.openai.com), or, for Microsoft Foundry
+   (ai.azure.com), the resource's key and a deployed model. **Get a key** / **Open Microsoft Foundry** opens the page.
+2. Choose the service, paste the key – for Foundry also the **Foundry resource** (its name, or the endpoint address) –
+   and click **Connect**. CaseKeeper checks the key, lists the models, picks the recommended one and switches AI on.
+3. Change **Model** (for Foundry, the **Deployment name**) and **Reasoning effort** if you want. **Use recommended**
+   puts back the defaults.
+
+| Service | Recommended (quick, low cost) | Also offered | Reasoning effort |
+|---|---|---|---|
+| Anthropic / Claude on Foundry | Claude Haiku 5.5, low | Claude Sonnet 5.5, Claude Opus 5.5 | low, medium, high, max |
+| OpenAI / OpenAI on Foundry | GPT-6 Luna, low | GPT-6.1 Terra, GPT-6.1 Sol, GPT-6 Astra | none, low, medium, high, xhigh, max |
+
+Higher effort means the model thinks for longer: more careful, slower and more expensive. Low is plenty for sorting
+and reading documents.
+
+**Other cloud settings:** **Mask names and personal details before sending (recommended)**, on by default; **Documents
+read at once** (CaseKeeper slows down by itself if the service says it's busy); **Ask again before sending** (brings
+back the *Before anything is sent* screen); **Remove key**.
+
+**Your key** is stored encrypted for your Windows account (Windows DPAPI). It's never shown again, never written to
+settings files, exports, backups, logs or the audit trail, and is only sent to the service it belongs to.
+
+### What's sent to a cloud AI, and masking
+
+- **What's sent:** only the text of the documents or records you ask it to analyse (or your help-assistant question),
+  plus CaseKeeper's instructions, to the one service you chose. Nothing is sent with the local AI.
+- **Only to that service:** CaseKeeper refuses any other address (only `api.anthropic.com`, `api.openai.com`, and your
+  own Foundry resource on `*.services.ai.azure.com`, `*.openai.azure.com` or `*.cognitiveservices.azure.com`), always
+  uses HTTPS, never follows a redirect, and ignores AI settings left by other programs (environment variables).
+- **Masking (on by default):** names of your parties, representatives and contacts, other names CaseKeeper
+  recognises, e-mail addresses, phone numbers, postcodes, National Insurance numbers, case numbers, bank account,
+  sort-code and card numbers, dates of birth and addresses are replaced with tags such as `[PERSON-1]` or
+  `[POSTCODE-2]` before sending. The AI is told to use the tags; its answer is put back with the real details on your
+  PC before CaseKeeper checks and saves it. The list linking tags to real details is kept in memory only, never sent
+  and never saved.
+- **Masking isn't perfect.** An unusual name, a nickname, or a badly scanned page can slip through, and the AI
+  still sees what the document is about. That's why bulk import lists *documents that couldn't be masked well* and
+  lets you read those locally or skip them.
+- **Consent:** the first time you use a cloud service, CaseKeeper asks you to agree, and bulk import shows the
+  *Before anything is sent* screen each time (unless you turn it off). Each agreement is in the audit trail.
+- **The service's terms apply.** Anthropic and OpenAI may keep what they receive for a limited time under their
+  terms; Microsoft Foundry processes it in your own Azure subscription. Check the terms – and whether you're allowed
+  to share the papers – before sending anything. Family court papers are confidential (FPR r.12.73, PD12G).
+- **Maximum security** (*Settings → Security*) switches any cloud AI off and back to the local AI.
 
 **Running a report.** On *AI analysis*:
 
@@ -411,10 +519,10 @@ guide. *Reset* puts any prompt back.
 model reads at once (context size), the longest answer, creativity, how long the model stays loaded, and a timeout.
 The performance profile picks sensible thread counts automatically.
 
-**Privacy.** Only the address you set is contacted. A server outside your home network must be allowed explicitly
-and must use HTTPS. An optional API key is stored encrypted for your Windows account and is never included in
-settings files. Each AI request is recorded in the audit trail (what kind, which model, how much text) – the content
-itself is not logged. **AI can be wrong: always check its output against the documents.**
+**Privacy.** With the local AI, only the address you set is contacted. A server outside your home network must be
+allowed explicitly and must use HTTPS. Any API key is stored encrypted for your Windows account and is never included
+in settings files. Each AI request is recorded in the audit trail (what kind, which service and model, how much
+text) – the content itself is not logged. **AI can be wrong: always check its output against the documents.**
 
 ## 16. Guide & FAQ
 
@@ -473,17 +581,18 @@ copies your set-up (no personal or case information) for a support request.
 
 ## 19. Security and privacy
 
-- **Nothing is uploaded.** CaseKeeper only uses the network for the optional AI, and only to the server you choose,
-  and for *Check for updates* (website version), which only downloads, and only when you click it or switch on
-  automatic checks. See [Updating CaseKeeper](#25-updating-casekeeper).
+- **Nothing is uploaded unless you choose a cloud AI.** CaseKeeper only uses the network for the optional AI – your
+  own Ollama server, or the cloud AI you set up, which gets masked text only after you agree (see
+  [What's sent to a cloud AI](#whats-sent-to-a-cloud-ai-and-masking)) – and for *Check for updates* (website
+  version), which only downloads, and only when you click it or switch on automatic checks. See [Updating CaseKeeper](#25-updating-casekeeper).
 - **Password protection** (*Settings → Password protection*) encrypts the database, every document, the daily
   snapshots and anything saved into the Exports folder, with AES-256. CaseKeeper asks for the password when it opens.
   **There is no recovery if the password is lost** – keep it safe, and keep backups.
 - **Auto-lock** hides every window behind the password prompt after a period without use, whenever Windows is
   locked, or on **Ctrl+L**.
 - **Maximum security** (*Settings → Security*) turns on the strictest options in one click: lock after 5 minutes and
-  with Windows, passwords on every backup, AI on your own computer or network only, reminders before sharing, and
-  14-day logs.
+  with Windows, passwords on every backup, AI on your own computer or network only (any cloud AI is switched off), reminders
+  before sharing, and 14-day logs.
 - Decrypted copies opened in other programs or shared are wiped when CaseKeeper closes (and at the next start, after
   a crash).
 - Exported Word, PDF and HTML files contain no author names or Windows user details. HTML exports contain no scripts
@@ -552,8 +661,12 @@ copies your set-up (no personal or case information) for a support request.
 | "Something went wrong" with a reference (E-…) | Your data is safe. Note the reference; the details are in *Settings → Logs*. |
 | Text in scanned documents isn't searchable | Install an English language pack with OCR (Windows Settings → Time & language → Language & region), then *Settings → Text recognition → Re-scan*. |
 | AI: "Couldn't connect" | Make sure Ollama is running, the address is right, and a model is installed (`ollama list`). Press *Test connection*. |
+| Cloud AI: "key rejected" / "isn't allowed" | Check the key was copied in full and is still active with the service (and, for Foundry, that it belongs to that resource). Paste it again and click *Connect*. |
+| Cloud AI: "model / deployment not found" | Choose another model, or for Foundry type the exact *deployment name* you created in Microsoft Foundry. |
+| Cloud AI: "busy" or rate-limited | CaseKeeper retries and reads fewer documents at once by itself. If it keeps happening, lower *Documents read at once* or check your account's limits. |
+| Cloud AI: documents "not sent" in Import review | You chose to skip documents that couldn't be masked well. Use *Retry selected* with the local AI, or send them on the next run. |
 | AI is very slow | Use a smaller model, allow GPU use, or reduce the context size. |
-| Bulk import: documents "Waiting – AI not available" | Start Ollama and check *Settings → AI → Test connection*, then *Import review → Summary → Analyse N waiting*. |
+| Bulk import: documents "Waiting – AI not available" | Start Ollama and check *Settings → AI → Test connection* (for a cloud AI: check you're online and click *Connect*; or you chose *Cancel* on *Before anything is sent*), then *Import review → Summary → Analyse N waiting*. |
 | Bulk import: "Analysis failed" (AI_TIMEOUT, AI_INVALID_JSON…) | Try a smaller context size or a different model, then *Retry*. The import itself is complete. |
 | Bulk import stopped part-way | Nothing is lost. Click *Carry on importing* on the Dashboard or *Carry on* in Import review. |
 | A folder "couldn't be opened" in the preview | Windows doesn't let your account read it. Copy its files somewhere you can read, then import that. |

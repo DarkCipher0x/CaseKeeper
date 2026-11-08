@@ -26,12 +26,15 @@ public partial class MainWindow
 
     private BulkImportService CreateBulk()
     {
-        var svc = new BulkImportService(Lib, () => new AiService.OllamaJsonClient(), AiService.BulkAnalysisSettings, () => AiService.Enabled)
+        var svc = new BulkImportService(Lib, AiService.BulkClient, AiService.BulkAnalysisSettings, () => AiService.Enabled)
         {
             // "Read text later": hand the documents to the normal background queue
             QueueTextLater = docs => Dispatcher.BeginInvoke(() => EnqueueOcr(docs)),
             // Documents read at once: this PC's tier, or the person's choice; always one on battery (read again for each run)
-            AiWorkers = AiService.BulkWorkers()
+            AiWorkers = AiService.BulkWorkers(),
+            // Cloud AI: the pre-send review, on the UI thread; documents that can't be masked well can go to the local AI instead
+            ConfirmCloudSend = req => Dispatcher.InvokeAsync(() => Modules.CloudSendReviewWindow.Ask(this, req)).Task,
+            LocalAiFactory = () => AiService.Enabled ? new AiService.OllamaJsonClient() : null
         };
         svc.Progress += p => Dispatcher.BeginInvoke(() => UpdateBulkBanner(p));
         return svc;
@@ -68,8 +71,8 @@ public partial class MainWindow
             MessageBox.Show(this, "A bulk import is running. Try again when it has finished.", "Organise with AI");
             return;
         }
-        if (!AiService.EnsureEnabled(this)) return;
-        if (MessageBox.Show(this, $"Ask your local AI to suggest a category, dates and records for {(docs.Count == 1 ? "this document" : $"these {docs.Count} documents")}?\n\n" +
+        if (!AiService.EnsureEnabled(this, AiService.BulkProvider)) return;
+        if (MessageBox.Show(this, $"Ask {(AiProviders.IsCloud(AiService.BulkProvider) ? AiProviders.Get(AiService.BulkProvider).Name : "your local AI")} to suggest a category, dates and records for {(docs.Count == 1 ? "this document" : $"these {docs.Count} documents")}?\n\n" +
                                   "Nothing changes until you approve each suggestion in Import review.", "Organise with AI",
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
         var job = Bulk.CreateLibraryJob(docs);

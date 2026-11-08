@@ -58,10 +58,19 @@ Temporary readable copies for **Open** and **Share** go to `%TEMP%\CaseKeeper-Sh
 Windows doesn't redirect `%TEMP%` for packaged apps (checked on 30 October 2026 with a test package
 and no restricted capability), so other programs can open them.
 
-Nothing else differs. Encryption, the database, text recognition and the optional Ollama AI all
-work the same way.
+Nothing else differs. Encryption, the database, text recognition, the optional Ollama AI and the
+optional cloud AI all work the same way, with one exception: *Install Ollama* in the website version
+runs Windows Package Manager; the Store version shows *Get Ollama*, which only opens ollama.com in
+the browser, so a Store copy never starts an installer (policy 10.2.2).
 
 ### Privacy
+
+Version 0.6.0 adds an optional cloud AI. In Partner Center's privacy questions and on the privacy
+page, say: no telemetry and no data collected by the developer; data stays on the PC unless the user
+chooses a cloud AI provider in Settings → AI, in which case the text of documents they analyse is
+sent to that provider (Anthropic, OpenAI or the user's own Microsoft Foundry resource) under the
+provider's terms, masked by default and only after consent. The privacy policy URL must cover this
+before 0.6.0 is submitted.
 
 - The package contains only the program, the user guide and the patch notes.
 - `build-store.ps1` refuses to produce a package if any of CaseKeeper's own files contain this PC's
@@ -212,7 +221,8 @@ In Partner Center, open CaseKeeper and click **Start your submission**.
 - Website: `https://darkciphersystems.com/software.html`
 - Support contact: a brand e-mail address or `https://darkciphersystems.com/report.html`
 - System requirements: x64; about 300 MB of disk space plus the documents. Note that the optional
-  AI needs [Ollama](https://ollama.com), installed separately.
+  AI needs [Ollama](https://ollama.com), installed separately, or the user's own account with
+  Anthropic, OpenAI or Microsoft Foundry.
 
 **Age ratings.** Answer the questionnaire honestly. The app has no user-to-user communication, no
 purchases and no unrestricted web access. The *content* people store may involve sensitive family
@@ -263,10 +273,15 @@ submission, delete it: that capability is no longer in the package.
 
 > No account or sign-in is needed. On first run CaseKeeper creates an empty local library in
 > %USERPROFILE%\CaseKeeper. To test: Documents → Add documents, choose any PDF or image. The AI
-> features are optional and need a local Ollama server (https://ollama.com); without one the app
-> says the AI is unavailable and everything else works. The Store version sends nothing over the
-> internet: its only network use is to that local Ollama server, if the person sets one up, which
-> downloads AI models (data, not code) only when the person asks. Its Settings → Updates section is
+> features are optional and off by default. They use either a local Ollama server
+> (https://ollama.com), which downloads AI models (data, not code) only when the person asks, or a
+> cloud AI service the person sets up with their own API key (Anthropic, OpenAI or Microsoft
+> Foundry, chosen in Settings → AI). Without either, the app says the AI is unavailable and
+> everything else works. Nothing is sent over the internet unless the person chooses a cloud AI:
+> then the text of the documents they ask it to analyse is sent over HTTPS to that service only,
+> with names and personal details masked by default, and only after a consent screen that shows
+> where it goes. The "Get Ollama" button only opens ollama.com in the browser; the app never runs
+> an installer. Its Settings → Updates section is
 > switched off in the Store version and only says that the Store delivers updates; the app never
 > downloads or runs code from anywhere else.
 >

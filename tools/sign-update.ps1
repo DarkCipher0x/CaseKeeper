@@ -43,6 +43,20 @@ function ToHex([byte[]]$b) { return (($b | ForEach-Object { $_.ToString('X2') })
 function FromHex([string]$h) { $b = New-Object byte[] ($h.Length / 2); for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($h.Substring(2 * $i, 2), 16) }; return ,$b }
 function Utf8File([string]$file, [string]$text) { [IO.File]::WriteAllText($file, $text, (New-Object Text.UTF8Encoding $false)) }
 
+# In a packaged app's process (for example a terminal started by a Store-installed program), Windows silently
+# redirects new files under %LOCALAPPDATA% into that package's private folder, which is deleted when the package is
+# uninstalled. Release keys must never be written there.
+function InPackagedProcess {
+    if (-not ('CkPkg' -as [type])) {
+        Add-Type -Namespace '' -Name CkPkg -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetCurrentPackageFullName(ref int length, System.Text.StringBuilder name);'
+    }
+    $len = 0
+    return ([CkPkg]::GetCurrentPackageFullName([ref]$len, $null) -ne 15700)   # 15700 = APPMODEL_ERROR_NO_PACKAGE
+}
+function RefuseIfPackaged {
+    if (InPackagedProcess) { throw "This shell runs inside a packaged (Store) app, so Windows would hide the keys in that app's private folder and delete them when it is uninstalled. Run this from an ordinary PowerShell window (Start menu -> Windows PowerShell)." }
+}
+
 function LoadBc {
     if ('Org.BouncyCastle.Crypto.Parameters.MLDsaParameters' -as [type]) { return }
     $dll = Join-Path $env:USERPROFILE '.nuget\packages\bouncycastle.cryptography\2.7.0\lib\net461\BouncyCastle.Cryptography.dll'
@@ -145,6 +159,7 @@ function MacOf([byte[]]$macKey, [byte[]]$salt, [byte[]]$iv, [byte[]]$ct) {
 }
 
 if ($NewKeys) {
+    RefuseIfPackaged
     LoadBc
     if ((Test-Path $EcKeyFile) -or (Test-Path $PqKeyFile)) { throw "A CaseKeeper release key already exists in $KeyDir; release keys are never replaced (every installed copy trusts only them)." }
     $p = New-Object System.Security.Cryptography.CngKeyCreationParameters
@@ -205,6 +220,7 @@ if ($Escrow) {
 }
 
 if ($RestoreEscrow) {
+    RefuseIfPackaged
     LoadBc
     if ((Test-Path $EcKeyFile) -or (Test-Path $PqKeyFile)) { throw "This Windows account already has CaseKeeper release keys in $KeyDir; nothing was changed." }
     $doc = Get-Content -Raw $RestoreEscrow | ConvertFrom-Json

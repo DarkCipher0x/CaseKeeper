@@ -269,6 +269,22 @@ public partial class App : Application
         int binDays = int.TryParse(db.GetSetting("bin.days", "30"), out var b) ? b : 30;
         try { Library.PurgeExpired(binDays); }
         catch (Exception ex) { AppLog.Warn("Library", "Couldn't empty old items from Deleted items", ex); }
+
+        // A protected library from before 0.6.0: bind each encrypted file to its name, in the background
+        // (after the restore point above). Files stay readable throughout; it carries on next time if stopped.
+        if (Library.Vault.IsEncrypted)
+        {
+            if (db.GetSetting(LibraryService.BoundFilesSetting, "0") == "1") Library.Vault.AllowLegacyFiles = false;
+            else
+            {
+                var lib = Library;
+                _ = System.Threading.Tasks.Task.Run(() =>
+                {
+                    try { lib.UpgradeFileBinding(); }
+                    catch (Exception ex) { AppLog.Warn("Protection", "Converting files to the current encryption format stopped", ex); }
+                });
+            }
+        }
     }
 
     /// <summary>

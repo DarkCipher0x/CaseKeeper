@@ -41,12 +41,11 @@ public static class BackupService
         var plainDb = lib.DatabasePath + ".backup-copy";
         try
         {
-            var dbToPack = lib.DatabasePath;
-            if (lib.Vault.IsEncrypted)
-            {
-                Database.ExportPlaintextCopy(lib.DatabasePath, lib.Vault.DatabasePassword, plainDb);
-                dbToPack = plainDb;
-            }
+            // Always a copy, so the saved AI keys and cloud consent can be left out: a backup restored on another
+            // PC or account, or by someone else, never brings a key or an "agreed to send" with it
+            Database.ExportPlaintextCopy(lib.DatabasePath, lib.Vault.IsEncrypted ? lib.Vault.DatabasePassword : null, plainDb);
+            Database.RemovePersonalSecrets(plainDb);
+            var dbToPack = plainDb;
 
             using (var fs = File.Create(temp))
             using (var zip = new ZipOutputStream(fs))
@@ -66,7 +65,7 @@ public static class BackupService
                 AddBytes(DbEntry, File.ReadAllBytes(dbToPack), File.GetLastWriteTime(lib.DatabasePath));
                 foreach (var f in Directory.EnumerateFiles(lib.FilesFolder))
                     AddBytes("Files/" + Path.GetFileName(f),
-                        lib.Vault.UnprotectFile(File.ReadAllBytes(f)), File.GetLastWriteTime(f));
+                        lib.Vault.UnprotectFile(File.ReadAllBytes(f), LibraryService.DocBinding(f)), File.GetLastWriteTime(f));
             }
             if (File.Exists(zipPath)) File.Delete(zipPath);
             File.Move(temp, zipPath);

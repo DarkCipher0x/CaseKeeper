@@ -64,7 +64,7 @@ public partial class MainWindow
         if (insertAt <= 0) insertAt = stack.Children.Count;
         Insert(Section("recovery", "Safety & recovery", RecoveryCard()));
         Insert(Section("transfer", "Settings, templates and other cases", TransferCard()));
-        Insert(Section("ai", "AI (Ollama)", AiCard()));
+        Insert(Section("ai", "AI", AiCard()));
         Insert(Section("performance", "Performance", PerformanceCard()));
         Insert(Section("logs", "Logs & diagnostics", LogsCard()));
         Insert(Section("updates", "Updates", UpdatesCard()));
@@ -210,13 +210,19 @@ public partial class MainWindow
         Db.SetSetting("backupEncrypt", "1");
         Db.SetSetting("remindConfidential", "1");
         Db.SetSetting("ai.allowRemote", "0");
+        // "AI local only" means exactly that: no cloud AI for reports or for bulk import, masking back on if it's chosen again
+        var wasCloud = AiService.UsingCloud || AiProviders.IsCloud(AiService.BulkProvider);
+        Db.SetSetting("ai.provider", AiProviders.Local);
+        Db.SetSetting("bulk.provider", "");
+        Db.SetSetting("ai.cloud.mask", "1");
+        AiService.ResetCloudConsent();
         Db.SetSetting("log.verbose", "0");
         Db.SetSetting("log.retentionDays", "14");
         App.ApplyStoredPreferences();
         Db.Audit("settings.security", "settings", null, "Turned on maximum security",
             "Auto-lock 5 min, lock with Windows, backup passwords required, AI local only, share reminders, 14-day logs");
         LoadSettings();
-        var msg = "Maximum security is on.";
+        var msg = "Maximum security is on." + (wasCloud ? " The AI now runs on this PC only: cloud AI is switched off (any saved key is kept until you remove it in Settings → AI)." : "");
         if (!Lib.Vault.IsEncrypted)
         {
             msg += "\n\nYour library isn't password protected yet, so documents are stored unencrypted. Turn on password protection now?";
@@ -377,8 +383,10 @@ public partial class MainWindow
     private UIElement AiCard()
     {
         var sp = new StackPanel();
-        sp.Children.Add(Ui.Muted("CaseKeeper can use Ollama – a free program that runs AI models on your own computer – to summarise documents, pull out chronologies, " +
-                                 "spot inconsistencies and explain the guide in plain English. Nothing is sent anywhere unless you turn this on, and then only to the server below.", 12.5));
+        sp.Children.Add(Ui.Muted("CaseKeeper can use AI to sort and organise documents, summarise them, pull out chronologies, spot inconsistencies and explain " +
+                                 "the guide in plain English. Use the local AI (Ollama, a free program that runs on this PC, so nothing leaves it), or a cloud " +
+                                 "service you choose: Anthropic, OpenAI, or either through Microsoft Foundry in your own Azure subscription. Nothing is sent anywhere " +
+                                 "unless you turn AI on, and cloud services always ask first and mask personal details by default.", 12.5));
         var help = Ui.Button("How to set up Ollama", "", (_, _) => OpenGuide("app.ai"));
         help.HorizontalAlignment = HorizontalAlignment.Left;
         help.Margin = new Thickness(0, 8, 0, 0);
@@ -386,6 +394,11 @@ public partial class MainWindow
 
         sp.Children.Add(SettingCheck("Use AI features", "ai.enabled", "0", _ => { ApplyMode(); _aiView?.Reload(); }, auditLabel: "AI features"));
 
+        // Which AI: the local AI (Ollama, below) or a cloud service, each with one-click setup
+        var local = new StackPanel();
+        sp.Children.Add(AiProviderSection(local));
+        local.Children.Add(new TextBlock { Text = "LOCAL AI (OLLAMA)", Style = Ui.Style("Label"), Margin = new Thickness(0, 14, 0, 2) });
+        sp.Children.Add(local);
         _aiEndpoint = new TextBox { Text = AiService.Endpoint, Width = 360, HorizontalAlignment = HorizontalAlignment.Left };
         _aiEndpoint.LostFocus += (_, _) =>
         {
@@ -396,8 +409,8 @@ public partial class MainWindow
             Db.SetSetting("ai.endpoint", v);
             Db.Audit("settings.change", "settings", null, "AI server address changed", new Uri(v.Contains("://") ? v : "http://" + v).Host);
         };
-        sp.Children.Add(Labelled("Ollama address", _aiEndpoint, "Usually http://localhost:11434. A server elsewhere on your network works too (e.g. a PC with a big graphics card)."));
-        sp.Children.Add(SettingCheck("Allow a server outside my home network (must use https://)", "ai.allowRemote", "0", auditLabel: "Remote AI server allowed"));
+        local.Children.Add(Labelled("Ollama address", _aiEndpoint, "Usually http://localhost:11434. A server elsewhere on your network works too (e.g. a PC with a big graphics card)."));
+        local.Children.Add(SettingCheck("Allow a server outside my home network (must use https://)", "ai.allowRemote", "0", auditLabel: "Remote AI server allowed"));
 
         var keyBox = new PasswordBox { Width = 360, HorizontalAlignment = HorizontalAlignment.Left };
         keyBox.LostFocus += (_, _) =>
@@ -413,7 +426,7 @@ public partial class MainWindow
         keyRow.Children.Add(keyBox);
         clearKey.Margin = new Thickness(8, 0, 0, 0);
         keyRow.Children.Add(clearKey);
-        sp.Children.Add(Labelled("API key (only if your server needs one)", keyRow, "Stored encrypted with Windows (DPAPI) for your account only. Not included in settings files."));
+        local.Children.Add(Labelled("API key (only if your server needs one)", keyRow, "Stored encrypted with Windows (DPAPI) for your account only. Not included in settings files."));
 
         var testRow = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
         testRow.Children.Add(Ui.Button("Test connection", "", async (_, _) => await TestAiAsync(), primary: true));
@@ -421,10 +434,10 @@ public partial class MainWindow
         _aiModel.LostFocus += (_, _) => SaveModel();
         _aiModel.SelectionChanged += (_, _) => Dispatcher.BeginInvoke(SaveModel);
         testRow.Children.Add(_aiModel);
-        sp.Children.Add(testRow);
+        local.Children.Add(testRow);
         _aiStatus = Ui.Muted("", 12.5);
         _aiStatus.SetResourceReference(TextBlock.ForegroundProperty, "AccentText");
-        sp.Children.Add(_aiStatus);
+        local.Children.Add(_aiStatus);
 
         var grid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -452,12 +465,12 @@ public partial class MainWindow
             new[] { ("0", "Unload straight away (frees memory)"), ("5m", "5 minutes"), ("10m", "10 minutes"), ("30m", "30 minutes"), ("-1", "Until Ollama closes") })));
         right.Children.Add(Labelled("Give up after", SettingCombo("ai.timeoutMinutes", "20",
             new[] { ("5", "5 minutes"), ("20", "20 minutes"), ("60", "1 hour"), ("180", "3 hours") })));
-        sp.Children.Add(grid);
+        local.Children.Add(grid);
         // What Bulk Case Import recommends for this hardware (models are checked when Import review → Options opens)
         var thisPc = Ui.Muted(AiHardware.Recommend(null).Summary +
                               $". Bulk import uses its own fast model ({AiHardware.DefaultModel} by default); change its speed in Import review → Review options….", 12.5);
         thisPc.Margin = new Thickness(0, 8, 0, 0);
-        sp.Children.Add(thisPc);
+        local.Children.Add(thisPc);
         sp.Children.Add(SettingCheck("Give the AI the case summary and the list of parties as background", "ai.includeCaseSummary", "1"));
 
         // ---- prompts
@@ -599,7 +612,7 @@ public partial class MainWindow
         $"Library: {(Lib.Vault.IsEncrypted ? "password protected" : "not protected")}, {(Lib.IsOnNetworkDrive ? "network drive" : "local drive")}",
         $"Documents: {_docs.Count} · deleted items: {_deletedDocs.Count} · audit entries: {Db.AuditCount()}",
         $"OCR: {OcrService.EngineDescription}",
-        $"AI: {(AiService.Enabled ? $"on, model {AiService.Model}" : "off")}",
+        $"AI: {(AiService.Enabled ? $"on, {AiService.Provider}, model {AiService.ActiveModel}" : "off")}",
         $"Mode: {(ProfessionalMode ? "Professional" : "Simple")}",
         "Recent errors:",
         string.Join("\n", AppLog.RecentEntries.Where(e => e.Level >= LogLevel.Error).TakeLast(10).Select(e => $"  {e.ErrorId} {e.Area}: {e.Message}"))

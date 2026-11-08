@@ -95,7 +95,8 @@ if (-not $SkipTests) {
         @{ Name = 'Document engine'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Docs'), '--', $testOut) },
         @{ Name = 'Data layer'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Data')) },
         @{ Name = 'Bulk Case Import'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.BulkImport')) },
-        @{ Name = 'Signed updates'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Updates')) }
+        @{ Name = 'Signed updates'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Updates')) },
+        @{ Name = 'Cloud AI and masking'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Ai')) }
     )
     foreach ($t in $tests) {
         $log = & dotnet @($t.Args)

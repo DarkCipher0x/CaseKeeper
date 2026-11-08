@@ -104,8 +104,8 @@ public class HelpAssistantView : UserControl
 
     private void RefreshStatus()
     {
-        _status.Text = AiService.Enabled && !string.IsNullOrWhiteSpace(AiService.Model)
-            ? $"Answering with {AiService.Model} on your Ollama server."
+        _status.Text = AiService.Enabled && !string.IsNullOrWhiteSpace(AiService.ActiveModel)
+            ? $"Answering with {AiService.ActiveDescription}."
             : "AI is off, so answers come straight from the help pages. Turn on AI in Settings → AI for step-by-step answers in your own words.";
     }
 
@@ -144,7 +144,8 @@ public class HelpAssistantView : UserControl
         RefreshStatus();
 
         var screen = MainWindow.Shell?.LastScreenName ?? "";
-        if (!AiService.Enabled || string.IsNullOrWhiteSpace(AiService.Model))
+        if (!AiService.Enabled || string.IsNullOrWhiteSpace(AiService.ActiveModel)
+            || (AiService.UsingCloud && !AiService.EnsureCloudConsent(Ui.Owner(this))))
         {
             AnswerWithoutAi(question, null);
             return;
@@ -160,7 +161,7 @@ public class HelpAssistantView : UserControl
             var system = BuildSystemPrompt(question, screen);
             var turns = _history.TakeLast(8).ToList();
             turns.Add(("user", question));
-            App.Library.Db.Audit("ai.help", "ai", null, $"Help assistant question ({AiService.Model})", $"{question.Length} characters (no case data sent)");
+            App.Library.Db.Audit("ai.help", "ai", null, $"Help assistant question ({AiService.ActiveModel})", $"{question.Length} characters (no case data sent)");
             answer = await AiService.ChatAsync(system, turns, piece => Dispatcher.BeginInvoke(() =>
             {
                 body.Text += piece;
@@ -180,9 +181,11 @@ public class HelpAssistantView : UserControl
         }
         catch (Exception ex)
         {
-            AppLog.Warn("AI", "Help assistant couldn't reach Ollama", ex);
+            AppLog.Warn("AI", "Help assistant couldn't reach the AI", ex);
             _messages.Children.Remove(bubble);
-            AnswerWithoutAi(question, $"I couldn't reach your AI ({ex.Message}). Is Ollama running? Here's what the help pages say instead:");
+            AnswerWithoutAi(question, AiService.UsingCloud
+                ? $"I couldn't reach {AiService.ActiveDescription} ({ex.Message}). Here's what the help pages say instead:"
+                : $"I couldn't reach your AI ({ex.Message}). Is Ollama running? Here's what the help pages say instead:");
         }
         finally
         {
@@ -233,7 +236,7 @@ public class HelpAssistantView : UserControl
             sb.AppendLine(excerpt.Length > 900 ? excerpt[..900].TrimEnd() + "…" : excerpt).AppendLine();
         }
         AddAssistant(sb.ToString().Trim(), links.Take(6).ToList(),
-            showSetup: !AiService.Enabled || string.IsNullOrWhiteSpace(AiService.Model));
+            showSetup: !AiService.Enabled || string.IsNullOrWhiteSpace(AiService.ActiveModel));
     }
 
     // ------------------------------------------------------------------ bubbles

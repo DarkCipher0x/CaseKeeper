@@ -164,10 +164,13 @@ static class Program
                      ("How does AI categorisation work?", "confidence"), ("Does my case data leave my computer?", "leave my computer"),
                      ("How do I review unknown documents?", "Unknown"), ("How do I approve extracted hearing dates?", "Approve"),
                      ("How do I correct an AI suggestion?", "Approve"), ("How do I pause or resume analysis?", "Pause"),
-                     ("What happens if Ollama is not running?", "Ollama isn't running"), ("How do I rerun failed analysis?", "analysis failed"),
+                     ("What happens if Ollama is not running?", "Ollama not running"), ("How do I rerun failed analysis?", "analysis failed"),
                      ("How do I remove or undo an approved suggestion?", "Undo"), ("Why was a document placed in Unknown?", "Unknown"),
                      ("How do confidence scores work?", "confidence"), ("how do i get back something i deleted", "Delete or get back"),
-                     ("The AI analysing takes a very long time, can I speed it up?", "faster"), ("Which AI model is best for importing a folder?", "faster")
+                     ("The AI analysing takes a very long time, can I speed it up?", "faster"), ("Which AI model is best for importing a folder?", "faster"),
+                     ("How do I use Claude with my Anthropic API key?", "Claude or ChatGPT"), ("Can I use OpenAI on Azure Foundry?", "Microsoft Foundry"),
+                     ("What gets sent to the cloud AI, is it masked?", "masking"), ("Which of these documents is the newest version?", "versions"),
+                     ("How do I install Ollama?", "local AI")
                  })
         {
             var m = HelpKnowledge.MatchRecipes(q).FirstOrDefault();

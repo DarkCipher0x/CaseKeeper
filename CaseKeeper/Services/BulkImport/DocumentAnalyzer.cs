@@ -257,7 +257,7 @@ public sealed class DocumentAnalyzer
                     "AI_TIMEOUT" => "The AI took too long to answer. Try a smaller context size or a faster model, then retry.",
                     "AI_INVALID_JSON" => "The AI's answer wasn't in the required format, twice. Retry, or try a different model.",
                     "AI_BAD_CATEGORY" => "The AI kept choosing a category that doesn't exist.",
-                    "AI_OVERLOAD" => "The AI ran out of memory on this document. CaseKeeper has switched to gentler settings; retry it.",
+                    "AI_OVERLOAD" => "The AI couldn't cope with this document (out of memory, or the AI service was busy). CaseKeeper has switched to gentler settings; retry it.",
                     "AI_REQUEST" => "The AI server couldn't handle this document. Retry it, or try a different model.",
                     _ => "The AI's answer didn't match what CaseKeeper needs, twice. Retry, or try a different model."
                 };

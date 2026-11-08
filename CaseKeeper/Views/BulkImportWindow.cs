@@ -215,9 +215,13 @@ public class BulkImportWindow : Window
         rightCol.Children.Add(Label("AFTER IMPORTING"));
         _runOcr = Check(rightCol, "Read the text now (including scans and photos)", saved.RunOcr,
             "Needed for search and for the AI. Untick to import quickly and let the text be read in the background.");
-        _runAi = Check(rightCol, "Ask my local AI to suggest categories, dates and records", saved.RunAi,
+        bool cloud = AiProviders.IsCloud(AiService.BulkProvider);
+        var cloudName = AiProviders.Get(AiService.BulkProvider).Name;
+        _runAi = Check(rightCol, cloud ? $"Ask the AI ({cloudName}) to suggest categories, dates and records" : "Ask my local AI to suggest categories, dates and records", saved.RunAi,
             AiService.Enabled
-                ? AiHardware.Tier == AiTier.Minimal
+                ? cloud
+                    ? $"Documents are sent to {cloudName}{(AiService.MaskCloud ? " with names and personal details masked" : ", NOT masked")}. You'll see exactly what will be sent, and can stop, before anything goes. You approve every suggestion."
+                : AiHardware.Tier == AiTier.Minimal
                     ? "This PC has no graphics card the AI can use and limited memory, so local AI would be very slow. CaseKeeper's own rules still suggest categories from form codes and titles."
                     : $"Uses the speed settings recommended for this PC (change them in Import review → Review options…) through Ollama on this computer or your own network. You approve every suggestion."
                 : "AI is switched off in Settings, so documents will be imported now and can be analysed later. CaseKeeper's own rules still suggest categories from form codes.");
@@ -288,7 +292,7 @@ public class BulkImportWindow : Window
         }
         catch (JsonException) { /* fall back to defaults */ }
         // On a PC too modest for local AI, it starts unticked (the person can still tick it)
-        return new BulkOptions { RunAi = AiService.Enabled && AiHardware.Tier != AiTier.Minimal };
+        return new BulkOptions { RunAi = AiService.Enabled && (AiProviders.IsCloud(AiService.BulkProvider) || AiHardware.Tier != AiTier.Minimal) };
     }
 
     private BulkOptions ReadOptions() => new()
@@ -658,7 +662,7 @@ public class BulkImportWindow : Window
             return;
         }
         var ai = _options.RunAi && AiService.Enabled
-            ? "\n\nThen your local AI will read each document and suggest categories, dates and records. Nothing is added to your case until you approve it in Import review."
+            ? $"\n\nThen {(AiProviders.IsCloud(AiService.BulkProvider) ? AiProviders.Get(AiService.BulkProvider).Name + " (after you've checked what will be sent)" : "your local AI")} will read each document and suggest categories, dates and records. Nothing is added to your case until you approve it in Import review."
             : "";
         if (MessageBox.Show(this, $"Import {count:N0} file(s) into your library?\n\nYour original files stay exactly where they are." + ai +
                                   "\n\nYou can pause at any time, and carry on later – even after closing CaseKeeper.",
@@ -799,7 +803,9 @@ public class BulkImportWindow : Window
         if (job?.LastErrorCode is "AI_UNAVAILABLE" or "AI_OFF")
             sp.Children.Add(Ui.Callout(job.LastErrorCode == "AI_OFF"
                 ? "AI is switched off, so the documents haven't been analysed. Switch it on in Settings → AI, then use “Analyse waiting documents” in Import review."
-                : "Your local AI (Ollama) couldn't be reached, so some documents are waiting to be analysed. Start Ollama, then use “Analyse waiting documents” in Import review."));
+                : AiService.UsingCloud || AiProviders.IsCloud(AiService.BulkProvider)
+                    ? "The AI service couldn't be reached, so some documents are waiting to be analysed. Check this PC is online and the key in Settings → AI, then use “Analyse waiting documents” in Import review."
+                    : "Your local AI (Ollama) couldn't be reached, so some documents are waiting to be analysed. Start Ollama, then use “Analyse waiting documents” in Import review."));
         sp.Children.Add(Ui.Text(findings > 0
             ? $"{findings:N0} suggestion(s) are waiting for you in Import review. Nothing has been added to your case yet."
             : "There's nothing to review yet.", null));

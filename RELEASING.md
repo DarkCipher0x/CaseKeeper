@@ -111,6 +111,10 @@ ML-DSA-65). Both were created once, on 8 November 2026.
 - **On a new PC or Windows account**, put them back with
   `tools\sign-update.ps1 -RestoreEscrow <file>`. It refuses unless the keys match the ones pinned in
   `Updater.cs`.
+- **Run key commands from an ordinary PowerShell window** (Start menu → Windows PowerShell). Inside a
+  packaged app, such as a terminal started by a Store-installed program, Windows silently moves new files
+  under `%LOCALAPPDATA%` into that app's private folder and deletes them when the app is uninstalled.
+  `-NewKeys` and `-RestoreEscrow` refuse to run there.
 - `tools\sign-update.ps1 -ShowPublicKey` prints the public keys; `-Verify <update.json>` checks a signed
   file without any private key.
 - The CI build has no keys, so it writes no `update.json`. Only the local release of record is signed.

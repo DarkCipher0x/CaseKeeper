@@ -19,7 +19,7 @@ namespace CaseKeeper.Views.Modules;
 /// the exact words), how confident the AI was and why, and any warnings from CaseKeeper's own checks.
 /// Approving uses the same forms and rules as adding a record by hand.
 /// </summary>
-public class ImportReviewView : UserControl
+public partial class ImportReviewView : UserControl
 {
     private static Data.Database Db => App.Library.Db;
     private static MainWindow Shell => MainWindow.Shell;
@@ -31,7 +31,7 @@ public class ImportReviewView : UserControl
         public string Key { get; init; } = "";
         public string Label { get; init; } = "";
         public int Count { get; init; }
-        public string Text => Count > 0 || Key is "summary" or "failed" ? $"{Label}  ({Count:N0})" : Label;
+        public string Text => Count > 0 || Key is "summary" or "failed" or "versions" ? $"{Label}  ({Count:N0})" : Label;
         public override string ToString() => Text;
     }
 
@@ -71,6 +71,7 @@ public class ImportReviewView : UserControl
             new Section("contact", "Contact", f => f.IsOpen && f.Kind == FindingKinds.Contact),
             new Section("people", "Parties & children", f => f.IsOpen && f.Kind is FindingKinds.Party or FindingKinds.Child),
             new Section("complaints", "Complaints", f => f.IsOpen && f.Kind == FindingKinds.Complaint),
+            new Section("versions", "Duplicates & versions", _ => false),
             new Section("conflicts", "Conflicts & checks", f => f.IsOpen && (f.Kind is FindingKinds.Conflict or FindingKinds.Issue || f.ConflictGroup.Length > 0)),
             new Section("low", "Low confidence", f => f.IsOpen && f.Confidence < BulkThresholds.Medium),
             new Section("failed", "Failed or not analysed", _ => false),
@@ -235,8 +236,10 @@ public class ImportReviewView : UserControl
         var items = _defs.Select(s => new SectionItem
         {
             Key = s.Key, Label = s.Label,
-            Count = s.Key == "summary" ? _all.Count(f => f.IsOpen) : s.Key == "failed" ? _fileRows.Count : _all.Count(s.Match)
+            Count = s.Key == "summary" ? _all.Count(f => f.IsOpen) : s.Key == "failed" ? _fileRows.Count : s.Key == "versions" ? OpenVersionGroups : _all.Count(s.Match)
         }).ToList();
+        // Copies and versions are worked out in the background, and only again when the library changes
+        _ = RefreshVersionsAsync();
         _sections.ItemsSource = items;
         _sections.SelectedItem = items.FirstOrDefault(i => i.Key == _current) ?? items[0];
         ShowSection();
@@ -248,9 +251,10 @@ public class ImportReviewView : UserControl
         var def = _defs.First(d => d.Key == _current);
         _title.Text = def.Label;
         _bulkBar.Children.Clear();
-        _filters.Visibility = _current is "summary" or "failed" ? Visibility.Collapsed : Visibility.Visible;
+        _filters.Visibility = _current is "summary" or "failed" or "versions" ? Visibility.Collapsed : Visibility.Visible;
         if (_current == "summary") { ShowSummary(); return; }
         if (_current == "failed") { ShowFailed(); return; }
+        if (_current == "versions") { ShowVersions(); return; }
 
         _subtitle.Text = _current switch
         {
@@ -277,7 +281,7 @@ public class ImportReviewView : UserControl
 
     private void Refilter()
     {
-        if (_current is "summary" or "failed" || _search == null) return;
+        if (_current is "summary" or "failed" or "versions" || _search == null) return;
         var def = _defs.First(d => d.Key == _current);
         var q = _search.Text.Trim();
         var docId = (_document.SelectedItem as CaseDocument)?.Id ?? 0;
@@ -311,7 +315,7 @@ public class ImportReviewView : UserControl
         var counts = new WrapPanel();
         foreach (var def in _defs.Where(d => d.Key is not ("summary" or "approved" or "auto" or "rejected" or "deferred")))
         {
-            int n = def.Key == "failed" ? _fileRows.Count : _all.Count(def.Match);
+            int n = def.Key == "failed" ? _fileRows.Count : def.Key == "versions" ? OpenVersionGroups : _all.Count(def.Match);
             if (n == 0) continue;
             var key = def.Key;
             var b = Ui.Button($"{def.Label}: {n:N0}", null, (_, _) => Go(key));
@@ -334,7 +338,9 @@ public class ImportReviewView : UserControl
 
         sp.Children.Add(Ui.Text("AI", "H2"));
         sp.Children.Add(Ui.Muted(AiService.Enabled
-            ? $"Using {(string.IsNullOrWhiteSpace(AiService.Model) ? "no model chosen yet" : AiService.Model)} on your own Ollama server. Only that server is contacted."
+            ? (AiProviders.IsCloud(AiService.BulkProvider)
+                ? $"Using {AiProviders.Get(AiService.BulkProvider).Name}{(AiService.MaskCloud ? ", with personal details masked" : ", masking OFF")}. You'll see what will be sent before anything goes."
+                : $"Using {(string.IsNullOrWhiteSpace(AiService.Model) ? "no model chosen yet" : AiService.Model)} on your own Ollama server. Only that server is contacted.")
             : "AI is switched off. Documents are still imported, and CaseKeeper's own rules suggest categories from form codes and names.", 12.5));
         sp.Children.Add(Ui.Muted("Confidence is how strongly the document supports a suggestion. High confidence means the document strongly " +
                                  "matches, but you should still confirm it. The AI does not make legal decisions or give legal advice.", 12.5));
@@ -362,7 +368,7 @@ public class ImportReviewView : UserControl
         sp.Children.Add(new TextBlock { Text = $"{j.RootName}  ·  {j.CreatedText}", FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         sp.Children.Add(Ui.Muted($"{(running ? "Running" : j.StateText)} · {j.PhaseText}" +
                                  (j.Model.Length > 0 ? $" · AI model {j.Model}" : "") +
-                                 (j.LastErrorCode is "AI_UNAVAILABLE" ? " · the AI couldn't be reached" : j.LastErrorCode is "AI_OFF" ? " · AI was switched off" : ""), 12));
+                                 (j.LastErrorCode is "AI_UNAVAILABLE" ? " · the AI couldn't be reached" : j.LastErrorCode is "AI_OFF" ? " · AI was switched off" : j.LastErrorCode is "AI_CLOUD_DECLINED" ? " · not sent to the cloud AI (you chose not to)" : ""), 12));
         sp.Children.Add(Ui.Muted(BulkImportService.Summarise(counts), 11.5));
         var row = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
         int waiting = counts.GetValueOrDefault("a" + (int)AnalysisState.AwaitingAi);
@@ -422,7 +428,7 @@ public class ImportReviewView : UserControl
     {
         var files = SelectedFiles().Where(f => f.DocumentId != null).ToList();
         if (files.Count == 0) { MessageBox.Show(Ui.Owner(this), "Select one or more documents first.", "Retry"); return; }
-        if (BusyRunning() || !AiService.EnsureEnabled(Ui.Owner(this))) return;
+        if (BusyRunning() || !AiService.EnsureEnabled(Ui.Owner(this), AiService.BulkProvider)) return;
         foreach (var g in files.GroupBy(f => f.JobId)) Shell.Bulk.QueueReanalysis(g.Key, g.Select(f => f.DocumentId!.Value));
         _ = RunQueuedAsync(files.Select(f => f.JobId).Distinct().ToList());
     }
@@ -437,7 +443,7 @@ public class ImportReviewView : UserControl
 
     private void Reanalyse(long jobId, AnalysisState which)
     {
-        if (BusyRunning() || !AiService.EnsureEnabled(Ui.Owner(this))) return;
+        if (BusyRunning() || !AiService.EnsureEnabled(Ui.Owner(this), AiService.BulkProvider)) return;
         var docs = Db.Query<ImportFile>("JobId=$j AND AnalysisStatus=$s AND DocumentId IS NOT NULL", ("$j", jobId), ("$s", (int)which))
             .Select(f => f.DocumentId!.Value).ToList();
         Shell.Bulk.QueueReanalysis(jobId, docs);
@@ -813,7 +819,7 @@ public class ImportReviewView : UserControl
 
     private void RerunDocument(AiFinding f)
     {
-        if (BusyRunning() || !AiService.EnsureEnabled(Ui.Owner(this))) return;
+        if (BusyRunning() || !AiService.EnsureEnabled(Ui.Owner(this), AiService.BulkProvider)) return;
         var file = Db.Query<ImportFile>("DocumentId=$d", ("$d", f.DocumentId)).OrderByDescending(x => x.Id).FirstOrDefault();
         long jobId;
         if (file != null)
@@ -926,7 +932,7 @@ public class ReviewOptionsWindow : FormDialog
 {
     private static Data.Database Db => App.Library.Db;
     private readonly TextBox _high, _medium, _autoThreshold, _maxParts;
-    private readonly ComboBox _preset, _depth, _model, _workers;
+    private readonly ComboBox _preset, _depth, _model, _workers, _bulkProvider, _cloudModel, _cloudEffort;
     private readonly CheckBox _auto;
     private readonly TextBlock _pc, _pcNote;
     private readonly Button _download;
@@ -943,6 +949,33 @@ public class ReviewOptionsWindow : FormDialog
         AddHint("Confidence is how strongly a document supports a suggestion, from 0 to 1. It isn't certainty: every suggestion still needs checking.");
         _high = Add("“High” confidence from", Box(BulkThresholds.High.ToString("0.00", CultureInfo.InvariantCulture)));
         _medium = Add("“Medium” confidence from (below this is “Low”, and categories go to Unknown)", Box(BulkThresholds.Medium.ToString("0.00", CultureInfo.InvariantCulture)));
+
+        // ---- which AI reads the documents: the one in Settings → AI, or another just for bulk import
+        Fields.Children.Add(new TextBlock { Text = "AI SERVICE", Style = Ui.Style("Label"), Margin = new Thickness(0, 18, 0, 4) });
+        var providerNames = new List<string> { $"Same as Settings → AI ({AiProviders.Get(AiService.Provider).Name})" };
+        providerNames.AddRange(AiProviders.All.Select(p => p.Name));
+        var savedProvider = Db.GetSetting("bulk.provider", "") ?? "";
+        _bulkProvider = Add("Which AI reads the documents", new ComboBox
+        {
+            ItemsSource = providerNames,
+            SelectedIndex = savedProvider.Length == 0 ? 0 : 1 + Math.Max(0, AiProviders.All.ToList().FindIndex(p => p.Id == savedProvider))
+        });
+        _cloudModel = Add("Cloud model (blank: the one in Settings → AI)", new ComboBox { IsEditable = true, Text = AiService.BulkCloudModel });
+        _cloudEffort = Add("Cloud reasoning effort", new ComboBox());
+        void FillCloud()
+        {
+            var p = AiProviders.Get(SelectedBulkProvider());
+            _cloudModel.Items.Clear();
+            foreach (var (id, _) in p.Models) _cloudModel.Items.Add(id);
+            var keep = AiService.BulkCloudEffort;
+            _cloudEffort.ItemsSource = new[] { $"Same as Settings → AI ({(p.IsCloud ? AiService.ProviderEffort(p.Id) : "–")})" }.Concat(p.Efforts.Select(e => e.Label)).ToList();
+            _cloudEffort.SelectedIndex = 1 + p.Efforts.ToList().FindIndex(e => e.Id == keep) is var i && i > 0 ? i : 0;
+            _cloudModel.IsEnabled = _cloudEffort.IsEnabled = p.IsCloud;
+        }
+        _bulkProvider.SelectionChanged += (_, _) => FillCloud();
+        FillCloud();
+        AddWrapped("Cloud services read much faster than most PCs and don't need a graphics card, but documents leave this PC. Before every run you see " +
+                   "what will be sent, with personal details masked by default. The local AI's speed settings below don't apply to cloud services.");
 
         // ---- AI speed: what this PC can cope with, and the person's own choices on top
         Fields.Children.Add(new TextBlock { Text = "AI SPEED", Style = Ui.Style("Label"), Margin = new Thickness(0, 18, 0, 4) });
@@ -1038,8 +1071,14 @@ public class ReviewOptionsWindow : FormDialog
             ? Visibility.Collapsed : Visibility.Visible;
     }
 
+    private string SelectedBulkProvider() =>
+        _bulkProvider == null || _bulkProvider.SelectedIndex <= 0 ? AiService.Provider : AiProviders.All[_bulkProvider.SelectedIndex - 1].Id;
+
     private void UseRecommended()
     {
+        _bulkProvider.SelectedIndex = 0;
+        _cloudModel.Text = "";
+        _cloudEffort.SelectedIndex = 0;
         _preset.SelectedIndex = 0;
         _depth.SelectedIndex = 0;
         _model.SelectedIndex = 0;
@@ -1110,6 +1149,21 @@ public class ReviewOptionsWindow : FormDialog
                                   "when it is at least this confident. You can undo each one in Import review.", Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return false;
 
+        var bulkProvider = _bulkProvider.SelectedIndex <= 0 ? "" : AiProviders.All[_bulkProvider.SelectedIndex - 1].Id;
+        var cloudInfo = AiProviders.Get(bulkProvider.Length > 0 ? bulkProvider : AiService.Provider);
+        var cloudModel = cloudInfo.IsCloud ? (_cloudModel.Text ?? "").Trim() : "";
+        if (cloudModel.Length > 100 || cloudModel.Any(char.IsWhiteSpace))
+        {
+            MessageBox.Show(this, "That model name isn't valid.", Title);
+            return false;
+        }
+        var cloudEffort = cloudInfo.IsCloud && _cloudEffort.SelectedIndex > 0 ? cloudInfo.Efforts[_cloudEffort.SelectedIndex - 1].Id : "";
+        if (cloudInfo.IsCloud && !AiService.HasProviderKey(cloudInfo.Id) &&
+            MessageBox.Show(this, $"{cloudInfo.Name} isn't connected yet. Bulk import will wait for it until you add a key in Settings → AI.\n\nKeep this choice?", Title,
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return false;
+        Db.SetSetting("bulk.provider", bulkProvider);
+        Db.SetSetting("bulk.cloudModel", cloudModel);
+        Db.SetSetting("bulk.cloudEffort", cloudEffort);
         var preset = _preset.SelectedIndex == 1 ? "careful" : "fast";
         var depth = _depth.SelectedIndex switch { 1 => "full", 2 => "categories", _ => "auto" };
         Db.SetSetting("bulk.high", high.ToString("0.00", CultureInfo.InvariantCulture));
@@ -1122,7 +1176,8 @@ public class ReviewOptionsWindow : FormDialog
         Db.SetSetting("bulk.autoApply", autoOn ? "1" : "0");
         Db.SetSetting("bulk.autoApplyThreshold", auto.ToString("0.00", CultureInfo.InvariantCulture));
         Db.Audit("settings.change", "settings", null, "Changed Import review options",
-            $"High from {high:0.00}, medium from {medium:0.00}, speed {preset}, reading {depth}, model {(model.Length > 0 ? model : "automatic")}, " +
+            $"AI service {(bulkProvider.Length > 0 ? bulkProvider : "as Settings")}{(cloudModel.Length > 0 ? $" ({cloudModel})" : "")}{(cloudEffort.Length > 0 ? $", effort {cloudEffort}" : "")}, " +
+            $"high from {high:0.00}, medium from {medium:0.00}, speed {preset}, reading {depth}, model {(model.Length > 0 ? model : "automatic")}, " +
             $"AI reads {(workers == 0 ? "automatic" : workers.ToString(CultureInfo.InvariantCulture))} at once, up to {parts} parts, " +
             $"auto-apply {(autoOn ? $"on at {auto:0.00}" : "off")}");
         if (MainWindow.Shell.Bulk is { IsRunning: false } bulk) bulk.AiWorkers = AiService.BulkWorkers();

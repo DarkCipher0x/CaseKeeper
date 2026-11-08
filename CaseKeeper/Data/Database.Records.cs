@@ -492,6 +492,11 @@ CREATE INDEX IF NOT EXISTS IX_AuditLog_Entity ON AuditLog(EntityType, EntityId);
         {
             var key = r.GetString(0);
             if (key is "onboarded" or "lastBackup" or "station.label" or "ai.apiKey") continue;
+            // Never take another library's AI service, keys or consent: where case material goes is chosen here, by hand
+            if (key is "ai.provider" or "bulk.provider" || key.StartsWith("ai.cloud.", StringComparison.OrdinalIgnoreCase)
+                || key.StartsWith("bulk.cloudReview.", StringComparison.OrdinalIgnoreCase)
+                || (key.StartsWith("ai.", StringComparison.OrdinalIgnoreCase) && key.EndsWith(".key", StringComparison.OrdinalIgnoreCase))
+                || key.StartsWith("ai.anthropic", StringComparison.OrdinalIgnoreCase) || key.StartsWith("ai.openai", StringComparison.OrdinalIgnoreCase)) continue;
             Exec(c, "INSERT OR IGNORE INTO Settings(Key,Value) VALUES($k,$v)", ("$k", key), ("$v", r[1] as string ?? ""));
         }
     }

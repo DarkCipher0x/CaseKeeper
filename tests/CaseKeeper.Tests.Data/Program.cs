@@ -104,6 +104,14 @@ INSERT INTO Events(EventDate,Title,EventType) VALUES('2026-10-02','Old event','O
         odb.Save(new Letterhead { Name = "From backup" });
         odb.SetSetting("case.number", "FROMBACKUP");
         odb.SetSetting("prompt.system", "custom prompt");
+        // Where case material may be sent is never taken from another library
+        odb.SetSetting("ai.provider", "anthropic");
+        odb.SetSetting("bulk.provider", "openai");
+        odb.SetSetting("ai.anthropic.key", "c2FtcGxlLWNpcGhlcnRleHQ=");
+        odb.SetSetting("ai.openai-foundry.resource", "someone-elses-resource");
+        odb.SetSetting("ai.cloud.consent.anthropic", "1");
+        odb.SetSetting("ai.cloud.mask", "0");
+        odb.SetSetting("bulk.cloudReview.skip.anthropic", "1");
         odb.Checkpoint();
         db = new Database(oldDb);
         db.SetSetting("case.number", "LOCAL");
@@ -113,6 +121,9 @@ INSERT INTO Events(EventDate,Title,EventType) VALUES('2026-10-02','Old event','O
         Check(result.RecordsAdded >= 2, $"merge brought {result.RecordsAdded} records");
         Check(db.GetSetting("case.number") == "LOCAL", "merge kept the local case number");
         Check(db.GetSetting("prompt.system") == "custom prompt", "merge brought settings this library didn't have");
+        Check(new[] { "ai.provider", "bulk.provider", "ai.anthropic.key", "ai.openai-foundry.resource", "ai.cloud.consent.anthropic", "ai.cloud.mask", "bulk.cloudReview.skip.anthropic" }
+                  .All(k => string.IsNullOrEmpty(db.GetSetting(k, ""))),
+              "merge never takes another library's cloud AI choice, keys, resource, consent or masking setting");
         var again = db.MergeFrom(other, Path.Combine(dir, "files"), (n, b) => n);
         Check(again.RecordsAdded == 0, "merging the same backup twice adds nothing");
         Check(db.VerifyAudit().Ok == false, "(chain still shows the earlier tamper – as it should)");

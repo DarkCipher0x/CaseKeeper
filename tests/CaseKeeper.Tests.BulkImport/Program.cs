@@ -110,6 +110,74 @@ static class Program
         }
     }
 
+    /// <summary>A stand-in for a cloud AI: the scripted AI, plus what the pre-send review needs. Records what it was sent.</summary>
+    sealed class FakeCloud : ICloudAiClient
+    {
+        public readonly FakeAi Inner = new();
+        public Masker Masker { get; init; }
+        public readonly List<string> Sent = new();
+        public string ProviderId => "anthropic";
+        public string ProviderName => "Test Cloud";
+        public string Host => "api.anthropic.com";
+        public string ModelName => "anthropic/test-model";
+        public Task<bool> IsAvailableAsync(CancellationToken ct) => Task.FromResult(true);
+        public async Task<string> CompleteJsonAsync(string system, string user, JsonObject schema, CancellationToken ct)
+        {
+            var masked = Masker != null ? Masker.Mask(user) : user;
+            lock (Sent) Sent.Add(masked);
+            var json = await Inner.CompleteJsonAsync(system, masked, schema, ct);
+            return Masker != null ? Masker.UnmaskJson(json) : json;
+        }
+    }
+
+    /// <summary>0.6.0: each encrypted file is bound to its own name, and pre-0.6.0 files are converted then refused.</summary>
+    static void EncryptedFileBinding(LibraryService enc, Vault vault, string firstStored)
+    {
+        Check(Encoding.ASCII.GetString(File.ReadAllBytes(firstStored), 0, 4) == "CKE2", "encryption: new files use the bound format (CKE2)");
+        var src = NewDir("imp-enc-bind-src");
+        Put(src, "second.txt", "A second, different document for the swap test.");
+        var second = enc.Import(Path.Combine(src, "second.txt"), new CaseDocument { Title = "Second", CategoryId = enc.Db.GetDocuments().First().CategoryId });
+        var first = enc.Db.GetDocuments().First(d => d.Id != second.Id);
+        var a = enc.GetFilePath(first); var b = enc.GetFilePath(second);
+        var aBytes = File.ReadAllBytes(a); var bBytes = File.ReadAllBytes(b);
+
+        // Swap the two encrypted files: neither may decrypt as the other
+        File.WriteAllBytes(a, bBytes); File.WriteAllBytes(b, aBytes);
+        bool refusedA = false, refusedB = false;
+        try { enc.ReadDocumentBytes(first); } catch (System.Security.Cryptography.CryptographicException) { refusedA = true; }
+        try { enc.ReadDocumentBytes(second); } catch (System.Security.Cryptography.CryptographicException) { refusedB = true; }
+        Check(refusedA && refusedB, "encryption: swapped document files are refused, not shown as each other");
+        File.WriteAllBytes(a, aBytes); File.WriteAllBytes(b, bBytes);
+        Check(Encoding.UTF8.GetString(enc.ReadDocumentBytes(second)).Contains("second, different"), "encryption: put back, they read correctly again");
+
+        // A file in the pre-0.6.0 format (no binding) is still read, then converted on the next start
+        byte[] Legacy(byte[] plain)
+        {
+            var key = Convert.FromBase64String(vault.DatabasePassword);
+            var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+            var cipher = new byte[plain.Length]; var tag = new byte[16];
+            using (var g = new System.Security.Cryptography.AesGcm(key, 16)) g.Encrypt(nonce, plain, cipher, tag);
+            return Encoding.ASCII.GetBytes("CKE1").Concat(nonce).Concat(tag).Concat(cipher).ToArray();
+        }
+        var oldText = Encoding.UTF8.GetBytes("Words from an older version of CaseKeeper.");
+        File.WriteAllBytes(b, Legacy(oldText));
+        enc.Db.SetSetting(LibraryService.BoundFilesSetting, "0");
+        vault.AllowLegacyFiles = true;
+        Check(Encoding.UTF8.GetString(enc.ReadDocumentBytes(second)).Contains("older version"), "encryption: a pre-0.6.0 file still opens before it's converted");
+        var converted = enc.UpgradeFileBinding();
+        Check(converted == 1 && Encoding.ASCII.GetString(File.ReadAllBytes(b), 0, 4) == "CKE2", $"encryption: old files are converted to the bound format ({converted})");
+        Check(Encoding.UTF8.GetString(enc.ReadDocumentBytes(second)).Contains("older version") && enc.Db.GetSetting(LibraryService.BoundFilesSetting, "") == "1"
+              && !vault.AllowLegacyFiles, "encryption: and read the same afterwards; the library then stops accepting the old format");
+        Check(enc.Db.GetAudit(50).Any(x => x.Action == "protection.upgrade"), "encryption: the conversion is in the audit trail");
+        Check(enc.UpgradeFileBinding() == 0, "encryption: converting again does nothing");
+        File.WriteAllBytes(b, Legacy(oldText));
+        bool refusedOld = false;
+        try { enc.ReadDocumentBytes(second); } catch (System.Security.Cryptography.CryptographicException) { refusedOld = true; }
+        Check(refusedOld, "encryption: an old-format file slipped in afterwards is refused");
+        File.WriteAllBytes(b, bBytes);
+        Check(!File.Exists(b + ".tmp") && Directory.GetFiles(enc.FilesFolder, "*.tmp").Length == 0, "encryption: no temporary files left behind");
+    }
+
     static string KeyFor(string user, string code)
     {
         var m = Regex.Match(user, $@"(K\d+): {Regex.Escape(code)}\b");
@@ -135,6 +203,119 @@ static class Program
         ["categorySuggestion"] = new JsonObject { ["categoryId"] = catKey, ["confidence"] = catConfidence, ["reason"] = "Looks like it", ["alternativeCategoryIds"] = new JsonArray() },
         ["findings"] = new JsonArray(findings.Select(f => (JsonNode)f).ToArray())
     }.ToJsonString();
+
+    // ================================================================== cloud AI, versions and trust
+    static void CloudAndVersions()
+    {
+        // ---- nothing is sent to a cloud AI unless the person agrees
+        var lib = NewLib("cloud-none");
+        var src = NewDir("cloud-none-src");
+        Put(src, "letter.txt", "Letter from Ottoline Fairweather about the contact arrangements for the summer holidays and the handover times.");
+        var cloud = new FakeCloud { Masker = new Masker(new[] { "Ottoline Fairweather" }) };
+        var svc = new BulkImportService(lib, () => cloud, () => Settings(), () => true) { TextWorkers = 1 };
+        var (job, files) = Run(lib, svc, src);
+        Check(cloud.Sent.Count == 0 && files.All(f => f.AnalysisValue == AnalysisState.AwaitingAi) && job.LastErrorCode == "AI_CLOUD_DECLINED",
+            "cloud AI: with no one to ask, nothing is sent and the documents wait");
+
+        // ---- the person says no
+        lib = NewLib("cloud-no");
+        src = NewDir("cloud-no-src");
+        Put(src, "letter.txt", "Letter from Ottoline Fairweather about the contact arrangements for the summer holidays and the handover times.");
+        cloud = new FakeCloud { Masker = new Masker(new[] { "Ottoline Fairweather" }) };
+        CloudSendRequest seen = null;
+        svc = new BulkImportService(lib, () => cloud, () => Settings(), () => true)
+        {
+            TextWorkers = 1, ConfirmCloudSend = r => { seen = r; return Task.FromResult(CloudSendDecision.Cancel); }
+        };
+        (job, files) = Run(lib, svc, src);
+        Check(seen != null && seen.Items.Count == 1 && seen.Host == "api.anthropic.com" && seen.Masking, "cloud AI: the review is shown with the host and masking");
+        Check(seen.Items[0].Found.GetValueOrDefault("PERSON") >= 1,
+            "cloud AI: the review counts what will be masked in each document");
+        Check(cloud.Sent.Count == 0 && files.All(f => f.AnalysisValue == AnalysisState.AwaitingAi), "cloud AI: declined → nothing sent");
+        Check(lib.Db.GetAudit(200).Where(a => a.Action == "ai.consent").Any(a => a.Summary.Contains("declined")), "cloud AI: the refusal is in the audit trail");
+
+        // ---- the person agrees: masked text goes, the answer comes back unmasked
+        lib = NewLib("cloud-yes");
+        src = NewDir("cloud-yes-src");
+        Put(src, "C100 application.txt", "Form C100 application by Ottoline Fairweather (ottoline@example.org) for a child arrangements order. Phone 07700 900456.");
+        cloud = new FakeCloud { Masker = new Masker(new[] { "Ottoline Fairweather" }) };
+        cloud.Inner.Respond = u => Answer(u, KeyFor(u, "C100"), 0.9, summary: "Application by " + Regex.Match(u, @"\[PERSON-\d+\]").Value);
+        svc = new BulkImportService(lib, () => cloud, () => Settings(), () => true)
+        {
+            TextWorkers = 1, ConfirmCloudSend = _ => Task.FromResult(new CloudSendDecision { Proceed = true })
+        };
+        (job, files) = Run(lib, svc, src);
+        Check(files.All(f => f.AnalysisValue == AnalysisState.Done), "cloud AI: agreed → the documents are analysed");
+        Check(cloud.Sent.Count > 0 && cloud.Sent.All(t => !t.Contains("Ottoline") && !t.Contains("Fairweather") && !t.Contains("ottoline@example.org") && !t.Contains("07700 900456")),
+            "cloud AI: no names, e-mail addresses or phone numbers in what was sent");
+        var sum = Findings(lib, FindingKinds.Summary).FirstOrDefault();
+        Check(sum != null && sum.Detail.Contains("Ottoline Fairweather") && !sum.Detail.Contains("[PERSON-"), "cloud AI: the answer is unmasked before it's saved");
+        var consent = lib.Db.GetAudit(200).FirstOrDefault(a => a.Action == "ai.consent");
+        Check(consent != null && consent.Details.Contains("api.anthropic.com") && consent.Details.Contains("Masking: on") && !consent.Details.Contains("Ottoline"),
+            "cloud AI: the agreement is audited with host and masking, never the content");
+
+        // ---- documents that can't be masked well: skipped, or read by the local AI instead
+        foreach (var choice in new[] { "skip", "local" })
+        {
+            lib = NewLib("cloud-poor-" + choice);
+            src = NewDir("cloud-poor-" + choice + "-src");
+            Put(src, "names.txt", "Report by Sandra Pemberton. Kevin Oduya visited. Lena Marsh and Tobias Wren attended. Grace Holloway noted it. Felix Arden agreed.");
+            Put(src, "plain.txt", "A short note about the arrangements for collecting the children from school on weekdays and at the weekend.");
+            cloud = new FakeCloud { Masker = new Masker() };
+            var local = new FakeAi();
+            svc = new BulkImportService(lib, () => cloud, () => Settings(), () => true)
+            {
+                TextWorkers = 1, LocalAiFactory = () => local,
+                ConfirmCloudSend = r => Task.FromResult(new CloudSendDecision { Proceed = true, PoorlyMasked = choice })
+            };
+            (job, files) = Run(lib, svc, src);
+            var poorFile = files.Single(f => f.FileName == "names.txt");
+            Check(cloud.Sent.All(t => !t.Contains("Pemberton")), $"poorly masked ({choice}): never sent to the cloud");
+            Check(choice == "skip" ? poorFile.AnalysisValue == AnalysisState.Skipped && poorFile.ErrorCode == "AI_NOT_SENT"
+                                   : poorFile.AnalysisValue == AnalysisState.Done && local.Calls > 0,
+                choice == "skip" ? "poorly masked: skipped, with the reason" : "poorly masked: read by the local AI instead");
+            Check(files.Single(f => f.FileName == "plain.txt").AnalysisValue == AnalysisState.Done, $"poorly masked ({choice}): the other documents still go to the cloud");
+        }
+
+        // ---- versions: same words in different files, drafts with edits, and unrelated documents
+        string Para(int seed, int n) => string.Join(" ", Enumerable.Range(0, n).Select(i => $"Sentence {seed}-{i} sets out what happened at the handover on that day and who was present."));
+        var v1 = Para(1, 30);
+        var v2 = v1 + " The applicant now also asks for overnight contact every other weekend. A further hearing is requested.";
+        var other = Para(7, 30).Replace("handover", "school meeting").Replace("present", "late");
+        var inputs = new List<VersionInput>
+        {
+            new(1, "Statement draft", v1, null, new DateTime(2026, 9, 12), "h1"),
+            new(2, "Statement final", v2, new DateTime(2026, 10, 3), new DateTime(2026, 10, 3), "h2"),
+            new(3, "Statement final (Word copy)", v2, null, new DateTime(2026, 10, 1), "h3"),
+            new(4, "Unrelated letter", other, null, null, "h4"),
+            new(5, "Exact copy A", Para(9, 20), null, null, "same"),
+            new(6, "Exact copy B", Para(9, 20), null, null, "same"),
+            new(7, "Tiny note", "See you Tuesday.", null, null, "h7"),
+        };
+        var groups = VersionDetector.Find(inputs);
+        var versions = groups.FirstOrDefault(g => g.Members.Any(m => m.DocumentId == 1));
+        Check(versions != null && versions.Members.Select(m => m.DocumentId).OrderBy(i => i).SequenceEqual(new long[] { 1, 2, 3 }), "versions: the draft and both finals are grouped");
+        Check(versions?.Kind == VersionKind.Versions, "versions: a draft with edits counts as versions");
+        Check(versions?.Members[0].DocumentId == 2 && versions.NewestReason.Contains("3 Oct 2026"), "versions: the newest is the one dated latest, and says why");
+        var draft = versions?.Members.Single(m => m.DocumentId == 1);
+        Check(draft?.Diff is { Added: >= 2, Removed: 0 } && draft.Diff.AddedSamples.Any(a => a.Contains("overnight contact")), "versions: what the newest added is listed");
+        Check(groups.All(g => g.Members.All(m => m.DocumentId != 4 && m.DocumentId != 7)), "versions: unrelated and very short documents aren't grouped");
+        Check(groups.Any(g => g.Kind == VersionKind.Exact && g.Members.Count == 2), "versions: byte-identical files are exact copies");
+        Check(VersionDetector.TextSimilarity(v2, v2) == 1 && VersionDetector.TextSimilarity(v1, other) < 0.2, "versions: similarity measure");
+        var many = Enumerable.Range(0, 400).Select(i => new VersionInput(100 + i, "Doc " + i, Para(1000 + i, 15), null, null, "x" + i)).ToList();
+        var sw = Stopwatch.StartNew();
+        var none = VersionDetector.Find(many);
+        Check(none.Count == 0 && sw.Elapsed < TimeSpan.FromSeconds(20), $"versions: 400 different documents compared quickly ({sw.ElapsedMilliseconds} ms), none grouped");
+        var g2 = groups.First(g => g.Members.Any(m => m.DocumentId == 1));
+        Check(g2.Key == VersionDetector.Find(inputs.AsEnumerable().Reverse().ToList()).First(g => g.Members.Any(m => m.DocumentId == 1)).Key, "versions: a group's key doesn't depend on order");
+
+        // ---- trust signals
+        var macro = new CaseDocument { Title = "Spreadsheet", FileExtension = ".xlsm", DocumentDate = new DateTime(2026, 10, 9) };
+        var signals = FindingChecks.TrustSignals(macro, new Dictionary<int, string> { [1] = "Costs schedule." }, new DateTime(2026, 9, 1));
+        Check(signals.Any(x => x.Contains("macros")) && signals.Any(x => x.Contains("last changed")), "trust: macros and a date after the file was last changed are flagged");
+        Check(FindingChecks.TrustSignals(new CaseDocument { Title = "Letter", FileExtension = ".pdf" }, new Dictionary<int, string> { [1] = Para(3, 10) }, null).Count == 0,
+            "trust: an ordinary document has no warnings");
+    }
 
     // ================================================================== synthetic files
     static byte[] Docx(string text)
@@ -264,6 +445,7 @@ static class Program
         HardwareTiers();
         Security(logStart);
         Hardening041();
+        CloudAndVersions();
 
         Console.WriteLine(failures == 0 ? $"ALL PASSED{(skipped > 0 ? $" ({skipped} skipped – see SKIP lines)" : "")}" : $"{failures} FAILURE(S)");
         SqliteConnection.ClearAllPools();
@@ -471,6 +653,7 @@ static class Program
         var stored = Directory.GetFiles(enc.FilesFolder).Single();
         Check(Vault.LooksEncrypted(File.ReadAllBytes(stored)), "import: in a protected library the copy is encrypted");
         Check(Encoding.UTF8.GetString(enc.ReadDocumentBytes(enc.Db.GetDocuments().Single())).Contains(Marker), "import: and decrypts to the original");
+        EncryptedFileBinding(enc, vault, stored);
         enc.Db.Checkpoint();
         SqliteConnection.ClearAllPools();
         var dbBytes = File.ReadAllBytes(enc.DatabasePath);
@@ -1430,7 +1613,19 @@ INSERT INTO Documents(Title,CategoryId,FileHash,FileExtension,ImportedAt,OcrStat
         File.WriteAllText(outsideTarget, "must survive");
         var d = lib.Import(Put(src, "note.txt", "An ordinary note."), new CaseDocument { CategoryId = lib.Db.GetCategories().First().Id });
         var zip = Path.Combine(Root, "h41-backup.zip");
+        lib.Db.SetSetting("ai.anthropic.key", "c2FtcGxlLWNpcGhlcnRleHQ=");
+        lib.Db.SetSetting("ai.cloud.consent.anthropic", "1");
+        lib.Db.SetSetting("prompt.system", "kept in the backup");
         BackupService.CreateBackup(lib, zip);
+        Check(lib.Db.GetSetting("ai.anthropic.key", "") != "", "backup: the library's own key is untouched");
+        var peek = NewDir("h41-peek");
+        ZipFile.ExtractToDirectory(zip, peek);
+        SqliteConnection.ClearAllPools();
+        var peekDb = new Database(Path.Combine(peek, "casekeeper.db"));
+        Check(peekDb.GetSetting("ai.anthropic.key", "") == "" && peekDb.GetSetting("ai.cloud.consent.anthropic", "") == "" && peekDb.GetSetting("prompt.system", "") == "kept in the backup",
+            "backup: AI keys and cloud consent are left out; other settings are kept");
+        SqliteConnection.ClearAllPools();
+        lib.Db.SetSetting("ai.anthropic.key", "");
 
         // Rewrite the backup: the record's stored name climbs out of Files, and a stray entry tries to escape staging
         var tampered = Path.Combine(Root, "h41-tampered.zip");

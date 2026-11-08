@@ -17,10 +17,32 @@ public static class FindingChecks
 
     public sealed class Report
     {
-        public int Duplicates, Conflicts, AlreadyRecorded, Urgent, Gaps, Superseded;
+        public int Duplicates, Conflicts, AlreadyRecorded, Urgent, Gaps, Superseded, Trust;
         public string Describe() =>
             $"{Duplicates} possible duplicate(s), {Conflicts} conflict(s), {AlreadyRecorded} already in the case, " +
-            $"{Urgent} coming up within two weeks, {Superseded} possibly replaced, {Gaps} gap(s) in the chronology.";
+            $"{Urgent} coming up within two weeks, {Superseded} possibly replaced, {Gaps} gap(s) in the chronology, {Trust} document(s) to treat with care.";
+    }
+
+    private static readonly string[] MacroTypes = { ".docm", ".dotm", ".xlsm", ".xltm", ".xlsb", ".pptm", ".potm", ".ppsm" };
+
+    /// <summary>
+    /// Plain checks on a document's file and text that the person should know about before relying on it, or before the
+    /// AI's reading of it: program code (macros) inside, text that looks badly misread from a scan, and a date written in
+    /// the document that is later than the file was last changed (a typo, or a document edited after the event).
+    /// </summary>
+    public static List<string> TrustSignals(CaseDocument d, IReadOnlyDictionary<int, string> pages, DateTime? fileModified)
+    {
+        var list = new List<string>();
+        var ext = (d.FileExtension ?? "").ToLowerInvariant();
+        if (!ext.StartsWith('.')) ext = "." + ext;
+        if (MacroTypes.Contains(ext))
+            list.Add("It's an Office file that can contain macros (program code). CaseKeeper never runs them, but don't enable editing or macros if you open it in Office unless you trust where it came from.");
+        var text = string.Join("\n", pages.OrderBy(p => p.Key).Select(p => p.Value));
+        if (text.Length > 400 && Masker.Assess(text).LowQualityText)
+            list.Add("The text looks badly misread (a poor scan or handwriting), so quotes, dates and names the AI took from it may be wrong. Check them against the page.");
+        if (d.DocumentDate is { } dated && fileModified is { } changed && dated.Date > changed.Date.AddDays(1))
+            list.Add($"It's dated {dated:d MMMM yyyy}, but the file was last changed on {changed:d MMMM yyyy}. The date may be a mistake, or the file may not be the final version.");
+        return list;
     }
 
     private static bool Live(AiFinding f) => f.StatusValue is FindingStatus.Proposed or FindingStatus.Deferred or FindingStatus.Approved or FindingStatus.AutoApplied;
@@ -219,6 +241,17 @@ public static class FindingChecks
 
         // Notes only, and only for rows still undecided: a decision made while the checks ran is never overwritten
         db.SaveCheckNotes(all.Where(f => f.IsOpen));
+        // ---- 9. documents to treat with care: things about the file itself that make it less trustworthy as it stands
+        var modified = db.Query<ImportFile>("DocumentId IS NOT NULL").GroupBy(f => f.DocumentId!.Value).ToDictionary(g => g.Key, g => g.Max(f => f.SourceModifiedAt));
+        foreach (var docId in all.Select(f => f.DocumentId).Distinct())
+        {
+            if (!docs.TryGetValue(docId, out var d) || d.DeletedAt != null) continue;
+            var signals = TrustSignals(d, db.GetAllPageText(d.Id), modified.GetValueOrDefault(d.Id));
+            if (signals.Count == 0) continue;
+            report.Trust++;
+            Conflict(d.Id, $"Treat with care: {AnalysisSchema.Clip(d.Title, 80)}", string.Join("\n", signals.Select(x => "• " + x)), "trust:" + d.Id, Array.Empty<AiFinding>());
+        }
+
         if (newConflicts.Count > 0) db.SaveQuietBatch(newConflicts);
         return report;
     }

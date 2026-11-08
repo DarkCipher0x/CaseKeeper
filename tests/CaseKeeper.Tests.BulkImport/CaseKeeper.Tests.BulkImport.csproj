@@ -40,6 +40,7 @@
     <Compile Include="$(Src)Services\PdfRenderService.cs" />
     <Compile Include="$(Src)Services\Performance.cs" />
     <Compile Include="$(Src)Services\Ai\AiHardware.cs" />
+    <Compile Include="$(Src)Services\Ai\Masker.cs" />
     <Compile Include="$(Src)Services\Deadlines.cs" />
     <Compile Include="$(Src)Services\HearingSync.cs" />
     <Compile Include="$(Src)Services\BackupService.cs" />

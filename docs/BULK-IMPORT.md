@@ -31,7 +31,8 @@ safety rules. For how to use it, see section 4 of the [user guide](../USER-GUIDE
                          person's folder mapping; SourcePath = relative path; SourceModifiedAt = information only)
            ─► 2 Text:    LibraryService.ProcessTextAsync, bounded by the performance profile; no text → review by hand
            ─► 3 Analyse: DocumentAnalyzer per document (bounded, one at a time by default)
-                           CategoryMatcher.Candidates → short list (K1…Kn) → Ollama structured output
+                           CategoryMatcher.Candidates → short list (K1…Kn) → structured output
+                           (OllamaJsonClient, or CloudJsonClient: Masker.Mask → Anthropic / OpenAI / Foundry → UnmaskJson)
                            → AnalysisSchema.Parse (validation) → provenance and date checks → AiFinding rows
            ─► 4 Check:   FindingChecks.Run (deterministic cross-document rules) → notes + conflict findings
                          optional auto-apply of very confident categories (off by default)
@@ -68,8 +69,71 @@ analysed again.
 
 ## The AI contract
 
-Requests go through `AiService.ChatJsonAsync` to the configured Ollama endpoint only (the existing endpoint safety
-rules apply: local by default, remote only if allowed and over https). `format` is a JSON Schema built by
+The analyser talks to one `IAiJsonClient`, created by `AiService.BulkClient()` from `bulk.provider` (empty = the
+provider in Settings → AI):
+
+- **Local** – `OllamaJsonClient` → `AiService.ChatJsonAsync` to the configured Ollama endpoint only (the existing
+  endpoint safety rules apply: local by default, remote only if allowed and over https).
+- **Cloud** – `CloudJsonClient` (implements `ICloudAiClient`) → `CloudAi.CompleteAsync`. Providers (`AiProviders`):
+  `anthropic` (Anthropic SDK, `api.anthropic.com`), `anthropic-foundry` (Anthropic.Foundry,
+  `https://{resource}.services.ai.azure.com/anthropic/`), `openai` (OpenAI SDK Chat Completions, `api.openai.com`)
+  and `openai-foundry` (`https://{resource}.openai.azure.com/openai/v1/`). The model is the Foundry deployment name.
+  Claude uses adaptive thinking with `output_config.effort` and a JSON-schema output format; OpenAI uses a strict
+  `json_schema` response format and `reasoning_effort` (temperature 0 only at effort `none`). `StructuredSchema`
+  removes keywords the services don't accept (min/max, lengths, patterns, formats), sets `additionalProperties:
+  false`, and for OpenAI makes every property required (optional ones nullable); CaseKeeper's own validation still
+  enforces the full schema.
+- **Network guard** – every cloud request goes through `HostGuard`: HTTPS on the default port, no user-info, and only
+  `api.anthropic.com`, `api.openai.com`, `{resource}.services.ai.azure.com`, `{resource}.openai.azure.com` or
+  `{resource}.cognitiveservices.azure.com`. Redirects are never followed, cookies are off, TLS 1.2/1.3 only, and
+  base URLs and credentials are always set explicitly so environment variables (`ANTHROPIC_BASE_URL`,
+  `ANTHROPIC_AUTH_TOKEN`, `OPENAI_BASE_URL`…) are never used. Keys are DPAPI-protected per provider (entropy
+  `CaseKeeper.ai.{provider}.key.v1`) and never logged, audited or exported.
+- **Errors** – `CloudAi.Map`: 401/403/404, network and 5xx → `AiUnavailableException`; 429/529 → `AiOverloadException`
+  (the step-down below then reads fewer at once); 400/413/422 → `AnalysisValidationException` with anything key-like
+  redacted; refusals and cut-off answers → `AnalysisValidationException`. Three SDK retries, a 20-minute timeout.
+
+### Masking (`Services/Ai/Masker.cs`)
+
+One `Masker` per run (`AiService.NewMasker`), seeded with the library's party names, representatives and contacts.
+Regexes add e-mail addresses, UK phone numbers, postcodes, NI numbers, case numbers, sort codes and account numbers,
+Luhn-valid card numbers, dates of birth, addresses and titled names (Mr/Mrs/Dr…). Each distinct value gets a stable
+token (`[PERSON-1]`, `[EMAIL-1]`, `[PHONE-1]`, `[POSTCODE-1]`, `[NINO-1]`, `[CASE-1]`, `[ACCOUNT-1]`, `[DOB-1]`,
+`[ADDRESS-1]`); `Masker.Instructions` tells the model to keep them. `UnmaskJson` walks the answer's JSON and puts the
+values back **before** `AnalysisSchema.Parse`, so the quote-on-page and date-in-text checks run on real text.
+Chat streaming uses `StreamUnmasker`, which holds back a partial token at a chunk boundary. The mapping is in memory
+only. `Masker.Assess` scores what's left: four or more capitalised name-like pairs not on the stop list, or text that
+looks like a garbled scan, makes a document *poorly masked*.
+
+### Pre-send review (`CloudSend.cs`, `CloudSendReviewWindow`)
+
+Before the analysis phase sends anything to a cloud provider, `BulkImportService` builds a `CloudSendRequest`
+(provider, host, model, masking, per-document mask counts and sensitive topics, estimated tokens) and awaits
+`ConfirmCloudSend`. With no hook, or `Cancel`, nothing is sent: the job gets `AI_CLOUD_DECLINED`, documents stay
+`AwaitingAi`, and an `ai.consent` audit entry records the refusal. Poorly masked documents follow the decision:
+`send`, `local` (read by `LocalAiFactory`'s Ollama client, no step-down) or `skip` (`Skipped`, code `AI_NOT_SENT`).
+Agreement is audited with provider, host, model, document count and masking state – never content or file names.
+`bulk.cloudReview.skip.{provider}` remembers "don't show again"; *Ask again before sending* clears it.
+
+### Versions (`VersionDetector.cs`, `ImportReviewView.Versions.cs`)
+
+Runs over every library document with extracted text (in the background, cached by a signature of ids and hashes).
+Text is normalised into 5-word shingles; 64 MinHash values in 16 bands × 4 rows give LSH candidate pairs (buckets over
+200 are skipped); candidates are confirmed with exact Jaccard or containment (≥ 0.9 with a size ratio ≥ 0.4), then
+grouped with union-find. Documents under 12 words are ignored. A group is `Exact` (same SHA-256), `SameContent`
+(≥ 0.97) or `Versions` (≥ 0.70). The newest is the latest document date, then file modified time, then the longest,
+and `NewestReason` says which. `Diff` is a sentence-level LCS (falling back to a set comparison above 4 M cells).
+Decisions (`versions.decisions` setting, keyed by a hash of the sorted ids) add tags only – *Latest version* /
+*Older version* or *Version* – are audited as `document.versions`, and can be undone. Nothing is deleted.
+
+### Trust signals (`FindingChecks.TrustSignals`)
+
+Section 9 of the checks adds a *Treat with care* conflict finding for macro-capable Office types, a garbled scan
+(`Masker.Assess(...).LowQualityText`), or a document date later than the source file's modified time.
+
+### Ollama details
+
+For the local AI, `format` is a JSON Schema built by
 `AnalysisSchema.Build`; servers too old for schemas get JSON mode, and CaseKeeper validates the answer itself either
 way. Temperature is 0. The prompt is the editable `prompt.bulk.analyse`.
 
@@ -139,6 +203,10 @@ rejected isn't added again.
 |---|---|
 | AI switched off / not requested | Import completes; documents `AwaitingAi`; rule-based categories offered; one job-level code (`AI_OFF`) |
 | Ollama not reachable at the start | Same, code `AI_UNAVAILABLE`; no per-document errors |
+| Cloud AI declined on the pre-send review | Nothing sent; documents `AwaitingAi`; code `AI_CLOUD_DECLINED`; audited |
+| Cloud key rejected, resource or model not found, offline | `AI_UNAVAILABLE` with a plain-English message |
+| Cloud rate limit (429/529) | SDK retries, then `AI_OVERLOAD` → step-down (fewer at once) |
+| Poorly masked document, "skip" chosen | `Skipped`, code `AI_NOT_SENT`; can be retried later |
 | Lost mid-run | Bounded retries (2 s, 5 s, 12 s), then the rest wait as `AwaitingAi` |
 | Timeout | One retry, then `AI_TIMEOUT` for that document; the job carries on |
 | Unexpected error | `AI_ERROR` with a log reference; only the exception *type* is logged |

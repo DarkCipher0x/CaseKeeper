@@ -28,7 +28,24 @@ public static class SettingsTransfer
         public List<DocTemplate> Templates { get; set; } = new();
     }
 
-    public static bool IsTransferable(string key) => !NeverExported.Any(p => key.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+    public static bool IsTransferable(string key) =>
+        !NeverExported.Any(p => key.StartsWith(p, StringComparison.OrdinalIgnoreCase)) && !IsCloudSecret(key);
+
+    /// <summary>Cloud AI keys and "I agreed to send" answers: personal to this PC and person, never copied anywhere.</summary>
+    public static bool IsCloudSecret(string key) =>
+        (key.StartsWith("ai.", StringComparison.OrdinalIgnoreCase) && key.EndsWith(".key", StringComparison.OrdinalIgnoreCase)) ||
+        key.StartsWith("ai.cloud.consent.", StringComparison.OrdinalIgnoreCase) ||
+        key.StartsWith("bulk.cloudReview.", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Settings that decide whether, and where, case material goes to a cloud AI. Only ever changed by hand
+    /// on this PC, never by importing a settings file or merging another library.
+    /// </summary>
+    public static bool IsCloudRouting(string key) =>
+        IsCloudSecret(key) ||
+        key.Equals("ai.provider", StringComparison.OrdinalIgnoreCase) || key.Equals("bulk.provider", StringComparison.OrdinalIgnoreCase) ||
+        key.StartsWith("ai.cloud.", StringComparison.OrdinalIgnoreCase) ||
+        AiProviders.All.Any(p => p.IsCloud && key.StartsWith("ai." + p.Id + ".", StringComparison.OrdinalIgnoreCase));
 
     public static void Export(Database db, string path, string password)
     {
@@ -101,6 +118,7 @@ public static class SettingsTransfer
             // send case material anywhere new: those settings are only ever changed by hand.
             if (k.StartsWith("security.", StringComparison.OrdinalIgnoreCase) ||
                 k.Equals("ai.allowRemote", StringComparison.OrdinalIgnoreCase) ||
+                IsCloudRouting(k) ||
                 k.Equals("remindConfidential", StringComparison.OrdinalIgnoreCase) ||
                 (k.Equals("ai.endpoint", StringComparison.OrdinalIgnoreCase) && AiService.CheckEndpoint(v, allowRemote: false) != null))
             {

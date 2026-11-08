@@ -108,6 +108,24 @@ public partial class Database
     }
 
     /// <summary>
+    /// Removes what belongs to this PC and person only from an unencrypted copy of the database: stored AI keys
+    /// (encrypted for this Windows account, so useless elsewhere anyway) and "agreed to send to a cloud AI".
+    /// </summary>
+    public static void RemovePersonalSecrets(string plainCopyPath)
+    {
+        SqliteConnection.ClearAllPools();
+        using (var c = new SqliteConnection(BuildConnectionString(plainCopyPath, null)))
+        {
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "DELETE FROM Settings WHERE Key = 'ai.apiKey' OR (Key LIKE 'ai.%' AND Key LIKE '%.key') " +
+                              "OR Key LIKE 'ai.cloud.consent.%' OR Key LIKE 'bulk.cloudReview.%'; VACUUM;";
+            cmd.ExecuteNonQuery();
+        }
+        SqliteConnection.ClearAllPools();
+    }
+
+    /// <summary>
     /// Rewrites a plaintext database as an encrypted one, or the other way round.
     /// SQLCipher can't convert a file in place, so this exports into a fresh database
     /// and swaps the files over. Ordinary tables and the FTS5 search index both come across.

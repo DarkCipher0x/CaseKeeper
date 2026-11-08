@@ -34,7 +34,7 @@ public class AiAssistWindow : Window
         var root = new DockPanel { Margin = new Thickness(20) };
         var head = new StackPanel();
         head.Children.Add(Ui.Text(title, "H1", 20));
-        var note = Ui.Muted($"Written by the AI model on your Ollama server ({AiService.Model}). Check it against your documents before relying on it. It is not legal advice.", 12);
+        var note = Ui.Muted($"Written by the AI ({AiService.ActiveDescription}). Check it against your documents before relying on it. It is not legal advice.", 12);
         head.Children.Add(note);
         _status = Ui.Muted("Starting…", 12);
         _status.Margin = new Thickness(0, 6, 0, 6);
@@ -49,7 +49,7 @@ public class AiAssistWindow : Window
         buttons.Children.Add(Ui.Button("Copy", "", (_, _) => Ui.CopyToClipboard(_output.Text)));
         buttons.Children.Add(Ui.Button("Save…", "", async (_, _) =>
         {
-            var doc = new DocModel { Title = title, Subtitle = $"AI-assisted · {AiService.Model} · {DateTime.Now:d MMMM yyyy HH:mm}", Footer = "AI-generated – check against the source documents. Not legal advice." };
+            var doc = new DocModel { Title = title, Subtitle = $"AI-assisted · {AiService.ActiveModel} · {DateTime.Now:d MMMM yyyy HH:mm}", Footer = "AI-generated – check against the source documents. Not legal advice." };
             doc.AddRange(Markup.FromMarkdown(_output.Text));
             await ExportHelper.ExportDocumentAsync(this, doc, null);
         }));
@@ -78,7 +78,7 @@ public class AiAssistWindow : Window
         try
         {
             var user = instruction + (withCaseBackground ? "\n\n" + AiService.CaseBackground() : "") + "\n\n---\n\n" + text;
-            App.Library.Db.Audit("ai.request", "ai", null, $"AI: {title} ({AiService.Model})", $"{text.Length:N0} characters sent");
+            App.Library.Db.Audit("ai.request", "ai", null, $"AI: {title} ({AiService.ActiveModel})", $"{text.Length:N0} characters sent to {AiService.ActiveHost}");
             w._status.Text = "Writing…";
             await AiService.ChatAsync(AiService.Prompt("prompt.system"), user,
                 piece => w.Dispatcher.BeginInvoke(() => { w._output.AppendText(piece); w._output.ScrollToEnd(); }), w._cts.Token);
@@ -140,8 +140,11 @@ public class AiView : UserControl
         // ---------------------------------------------------------------- left: choose
         var left = new StackPanel();
         left.Children.Add(Ui.Text("AI analysis", "H1"));
-        left.Children.Add(Ui.Muted("Ask your own local AI (Ollama) to summarise, extract a chronology, find inconsistencies and more. " +
-                                   "Your documents stay on your computer.", 12.5));
+        left.Children.Add(Ui.Muted(AiService.UsingCloud
+            ? $"Ask {AiService.ActiveDescription} to summarise, extract a chronology, find inconsistencies and more. " +
+              (AiService.MaskCloud ? "Names and personal details are masked before anything is sent." : "Masking is off: what you choose is sent as it is.")
+            : "Ask your own local AI (Ollama) to summarise, extract a chronology, find inconsistencies and more. " +
+              "Your documents stay on your computer.", 12.5));
         _setupNote = Ui.Muted("", 12.5);
         _setupNote.Margin = new Thickness(0, 8, 0, 0);
         left.Children.Add(_setupNote);
@@ -277,7 +280,7 @@ public class AiView : UserControl
     public void Reload()
     {
         _setupNote.Text = AiService.Enabled
-            ? $"Using {(string.IsNullOrWhiteSpace(AiService.Model) ? "(no model chosen)" : AiService.Model)} at {AiService.Endpoint}"
+            ? $"Using {AiService.ActiveDescription}"
             : "AI is switched off. Turn it on in Settings → AI (it needs Ollama installed).";
         _picks = (MainWindow.Shell?.Documents ?? new List<CaseDocument>()).Select(d => new Pick { Doc = d, Selected = _picks.FirstOrDefault(p => p.Doc.Id == d.Id)?.Selected ?? false }).ToList();
         FilterPicks();
@@ -502,8 +505,8 @@ public class AiView : UserControl
             _status.Text = $"Finished in {result.DurationMs / 1000.0:0} s · {result.Chunks} part(s). Save it to keep it.";
             _shown = new AiReport
             {
-                Title = $"{reportName} – {scope}", ReportType = reportName, Scope = scope, Model = AiService.Model,
-                Endpoint = new Uri(AiService.Endpoint).Host, Output = _output.Text, DurationMs = result.DurationMs, ChunkCount = result.Chunks
+                Title = $"{reportName} – {scope}", ReportType = reportName, Scope = scope, Model = AiService.ActiveModel,
+                Endpoint = AiService.ActiveHost, Output = _output.Text, DurationMs = result.DurationMs, ChunkCount = result.Chunks
             };
         }
         catch (OperationCanceledException) { _status.Text = "Stopped."; }
@@ -522,7 +525,7 @@ public class AiView : UserControl
     private void SaveReport()
     {
         if (string.IsNullOrWhiteSpace(_output.Text)) return;
-        var r = _shown ?? new AiReport { Title = "Report", Model = AiService.Model };
+        var r = _shown ?? new AiReport { Title = "Report", Model = AiService.ActiveModel };
         r.Output = _output.Text;
         Db.Save(r);
         _shown = r;
@@ -543,7 +546,7 @@ public class AiView : UserControl
         var doc = new DocModel
         {
             Title = title,
-            Subtitle = $"AI-assisted analysis · {(_shown?.Model ?? AiService.Model)} · {(_shown?.CreatedAt ?? DateTime.Now):d MMMM yyyy HH:mm}",
+            Subtitle = $"AI-assisted analysis · {(_shown?.Model ?? AiService.ActiveModel)} · {(_shown?.CreatedAt ?? DateTime.Now):d MMMM yyyy HH:mm}",
             Footer = "AI-generated – check against the source documents. Not legal advice."
         };
         doc.AddRange(Markup.FromMarkdown(_output.Text));

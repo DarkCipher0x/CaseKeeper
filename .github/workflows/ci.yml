@@ -54,3 +54,9 @@ jobs:
         run: |
           dotnet run --project tests/CaseKeeper.Tests.Updates
           if ($LASTEXITCODE -ne 0) { throw "Signed update tests failed" }
+
+      - name: Cloud AI and masking tests
+        shell: pwsh
+        run: |
+          dotnet run --project tests/CaseKeeper.Tests.Ai
+          if ($LASTEXITCODE -ne 0) { throw "Cloud AI tests failed" }

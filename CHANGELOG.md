@@ -14,6 +14,81 @@ folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\Cas
 
 ---
 
+## v0.6.0 — 8 November 2026
+
+A feature and security release. Bulk Case Import and every AI tool can now use a cloud AI (Anthropic, OpenAI, or
+either on Microsoft Foundry) as well as the local AI, with masking and a review before anything is sent. A new
+*Duplicates & versions* review finds copies and drafts of the same document and shows which is newest. Encrypted
+files are now bound to their own names. Upgrade over any earlier version: nothing you already have is changed, and
+the AI stays on the local AI (or off) until you choose otherwise. From 0.5.0, *Settings → Updates* can install it for you.
+
+### New
+- **Choose your AI** in *Settings → AI → Which AI to use*: the local AI on this PC (Ollama), **Anthropic (Claude)**,
+  **OpenAI (GPT)**, **Claude on Microsoft Foundry** or **OpenAI on Microsoft Foundry**. Pick the model (for Foundry,
+  your deployment name) and the reasoning effort. The default is quick and low-cost: Claude Haiku 5.5 or GPT-6 Luna
+  at low effort. Bulk import can use a different AI from the rest of the app (*Review options… → AI SERVICE*).
+- **One-click set-up.** For a cloud AI: paste the key (and Foundry resource) and press *Connect*. CaseKeeper checks
+  the key, lists the models, picks the recommended one and switches AI on. For the local AI: *Install Ollama* (website
+  version, via Windows Package Manager after asking) or *Get Ollama* (Store version, opens the download page), then
+  *Set up the local AI*, which downloads the quick model and switches AI on.
+- **Masking**, on by default for cloud AI. Names from your parties and contacts, other recognised names, e-mail
+  addresses, phone numbers, postcodes, National Insurance, case, bank and card numbers, dates of birth and addresses
+  are replaced with tags such as [PERSON-1] before sending, and put back on your PC before the answer is checked and
+  saved. The list linking tags to details stays in memory only.
+- **Before anything is sent**: before a bulk import sends documents to a cloud AI, a screen shows where they go,
+  how much text, what will be masked, sensitive subjects in the batch, and documents that couldn't be masked well.
+  For those you choose to read them with the local AI instead, skip them, or send them anyway. If you cancel,
+  nothing is sent. Every agreement is in the audit trail, without any content.
+- **Duplicates & versions** (*Import review*): copies and versions of the same document found by their words, not
+  just their files – a PDF and a Word copy of one letter, or a draft and its final. The newest is shown first, with
+  why; **What changed** compares any version with it sentence by sentence. *Keep newest, tag the others as older*,
+  *Keep all, link as versions* or *Not related* – nothing is deleted, and each choice can be undone.
+- **Treat with care** notes under *Conflicts & checks* for Office files that can contain macros, badly scanned
+  text, and a date written in a document later than the file itself was last changed.
+- The help assistant, AI analysis, wording improvements and the guide's *Ask the AI* work with the cloud AI too,
+  masked the same way.
+
+### Security
+- **Encrypted files are bound to their names.** In a password-protected library, each document is now encrypted
+  with its own stored name as AES-GCM associated data (format CKE2), so swapping two encrypted files, or putting
+  another file in a document's place, is detected instead of silently showing the wrong evidence. Existing files are
+  converted in the background the first time the library opens (after the daily restore point); after that, files
+  in the old format are refused. This closes the last item from the October 2026 security review.
+- Cloud AI requests can only go to `api.anthropic.com`, `api.openai.com` or your own Foundry resource, over HTTPS
+  (TLS 1.2 or 1.3), with redirects never followed, no cookies, and no settings taken from environment variables.
+  Keys are encrypted for your Windows account and never written to logs, the audit trail, exports, settings files
+  or backups.
+- **Maximum security** now also switches any cloud AI off, back to the local AI, as its "AI local only" promised.
+- Importing a settings file, or merging another library, can no longer choose a cloud AI, add a key or a Foundry
+  resource, turn masking off or pre-agree to sending: those are only ever set by hand.
+- Backups now leave out stored AI keys and cloud consent.
+- Nothing reaches a cloud AI without your agreement, whichever screen asks: the check is made at the moment of
+  sending as well as on screen. The help assistant now asks first too.
+
+### Components
+- New: Anthropic 13.6.0 and Anthropic.Foundry 1.0.0 (Apache-2.0), OpenAI 2.15.0 (MIT).
+- Pinned to the newest stable releases of what they use: Azure.Core 1.64.0, Azure.Identity 1.21.0,
+  Microsoft.Identity.Client 4.92.0, Microsoft.IdentityModel.Abstractions 8.23.0, System.ClientModel 1.17.0, and the
+  Microsoft.Extensions abstractions 10.0.14.
+- .NET 10.0.14, the latest security release. No known vulnerabilities in any package, including transitive ones.
+- PDFsharp stays on 6.2.4, the last MIT release.
+
+### Not in this release
+- Signing in to Microsoft Foundry with a Microsoft (Entra) account – Foundry uses a key for now.
+- Telling the AI that a document is a later version of another while it reads it; version groups are shown in
+  Import review instead.
+
+### For developers
+- New `tests\CaseKeeper.Tests.Ai`: every cloud provider against a scripted network (no internet, no real keys),
+  allowed hosts, schema adaptation, error mapping and masking. Run by `build-release.ps1` and CI.
+- Bulk import tests cover the pre-send review (declined, agreed, poorly masked skipped or read locally), version
+  detection (400 documents in well under a second), trust signals, the bound encryption format and its conversion,
+  and backups without keys. The data tests cover merges never taking cloud AI settings.
+- docs\BULK-IMPORT.md describes the providers, network guard, masking, pre-send review, version detection and trust
+  signals. THIRD-PARTY-NOTICES.md lists the new components.
+
+---
+
 ## v0.5.1 — 8 November 2026
 
 A maintenance release that tightens the Microsoft Store version and the release tools. Upgrade over any earlier

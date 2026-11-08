@@ -73,6 +73,13 @@ public sealed class BulkImportService
     public int AiWorkers { get; set; } = 1;
     public int TextWorkers { get; set; } = Math.Max(1, Performance.OcrWorkers);
     public bool IsRunning { get; private set; }
+    /// <summary>
+    /// Shown before a cloud AI reads anything: what will be sent, where, and what's sensitive in it. Without it
+    /// (or when the person says no) nothing is sent, and the documents wait for the AI.
+    /// </summary>
+    public Func<CloudSendRequest, Task<CloudSendDecision>> ConfirmCloudSend { get; set; }
+    /// <summary>The local AI, for documents the person chose not to send to the cloud because they couldn't be masked well.</summary>
+    public Func<IAiJsonClient> LocalAiFactory { get; set; }
     public long? RunningJobId { get; private set; }
 
     public BulkImportService(LibraryService lib, Func<IAiJsonClient> aiFactory, Func<AnalysisSettings> settings, Func<bool> aiEnabled)
@@ -634,6 +641,62 @@ public sealed class BulkImportService
             return;
         }
 
+        // Cloud AI: the person sees what is about to leave this PC, and decides, before anything is sent
+        var viaLocal = new HashSet<long>();
+        IAiJsonClient localClient = null;
+        var cloud = client as ICloudAiClient;
+        string cloudNote = "";
+        if (cloud != null)
+        {
+            var items = new List<CloudSendItem>();
+            foreach (var f in queue)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Db.GetDocument(f.DocumentId!.Value) is not { DeletedAt: null } d) continue;
+                items.Add(CloudSendReview.Assess(f, d, Db.GetAllPageText(d.Id), cloud.Masker));
+            }
+            var request = new CloudSendRequest
+            {
+                ProviderId = cloud.ProviderId, Provider = cloud.ProviderName, Host = cloud.Host, Model = client.ModelName, Masking = cloud.Masker != null, Items = items
+            };
+            var decision = ConfirmCloudSend == null ? CloudSendDecision.Cancel : await ConfirmCloudSend(request) ?? CloudSendDecision.Cancel;
+            if (!decision.Proceed)
+            {
+                Db.Audit("ai.consent", "ai", null, $"Bulk import: declined to send {items.Count} document(s) to {cloud.ProviderName}", $"Job #{job.Id}. Host: {cloud.Host}.");
+                SetAwaiting(job, queue, "AI_CLOUD_DECLINED", categories);
+                return;
+            }
+            var poor = items.Where(i => i.PoorlyMasked).Select(i => i.File.Id).ToHashSet();
+            if (poor.Count > 0 && decision.PoorlyMasked == "skip")
+            {
+                foreach (var f in queue.Where(f => poor.Contains(f.Id)))
+                {
+                    f.AnalysisValue = AnalysisState.Skipped;
+                    f.ErrorCode = "AI_NOT_SENT";
+                    f.ErrorMessage = "Not sent to the cloud AI: it couldn't be masked reliably, and you chose to skip such documents.";
+                    Save(f);
+                }
+                queue = queue.Where(f => !poor.Contains(f.Id)).ToList();
+            }
+            else if (poor.Count > 0 && decision.PoorlyMasked == "local")
+            {
+                localClient = LocalAiFactory?.Invoke();
+                if (localClient != null && await localClient.IsAvailableAsync(ct)) viaLocal = poor;
+                else
+                {
+                    var wait = queue.Where(f => poor.Contains(f.Id)).ToList();
+                    SetAwaiting(job, wait, "AI_UNAVAILABLE", categories);
+                    queue = queue.Where(f => !poor.Contains(f.Id)).ToList();
+                    localClient = null;
+                }
+            }
+            cloudNote = $" Sent to {cloud.ProviderName} ({cloud.Host}) with personal details {(cloud.Masker != null ? "masked" : "NOT masked")}" +
+                        (poor.Count > 0 ? $"; {poor.Count} poorly masked document(s): {(decision.PoorlyMasked switch { "skip" => "skipped", "local" => viaLocal.Count > 0 ? "read by the local AI" : "waiting for the local AI", _ => "sent anyway" })}" : "") + ".";
+            Db.Audit("ai.consent", "ai", null, $"Bulk import: agreed to send {queue.Count - viaLocal.Count} document(s) to {cloud.ProviderName}",
+                $"Job #{job.Id}. Host: {cloud.Host}. Model: {client.ModelName}. Masking: {(cloud.Masker != null ? "on" : "off")}.{cloudNote}");
+            if (queue.Count == 0) return;
+        }
+
         var baseSettings = _settings();
         job.Model = client.ModelName;
         job.PromptVersion = baseSettings.PromptVersion;
@@ -643,7 +706,7 @@ public sealed class BulkImportService
         Db.SaveQuiet(job);
         Db.Audit("ai.request", "ai", null, $"Bulk import: AI analysis of {queue.Count} document(s) ({client.ModelName})",
             $"Job #{job.Id}. Prompt {baseSettings.PromptVersion}, schema {AnalysisSchema.Version}" +
-            $"{(client.CategoriesOnly ? ", quick reading (categories only)" : "")}, {AiWorkers} at once. Only the configured local AI server is used.");
+            $"{(client.CategoriesOnly ? ", quick reading (categories only)" : "")}, {AiWorkers} at once.{(cloud != null ? cloudNote : " Only the configured local AI server is used.")}");
 
         // Automatic step-down: if the AI runs out of memory, keeps timing out, or doesn't fit on the graphics card, ease off
         // one step at a time – fewer documents at once, smaller parts, a lighter model, then quick reading – and say what changed
@@ -652,7 +715,8 @@ public sealed class BulkImportService
         int workers = Math.Max(1, AiWorkers), active = 0, level = 0, done = 0;
         var settings = baseSettings;
         var analyzer = new DocumentAnalyzer(client, settings, categories);
-        bool gpuChecked = false;
+        var localAnalyzer = localClient != null ? new DocumentAnalyzer(localClient, baseSettings, categories) : null;
+        bool gpuChecked = cloud != null;
 
         // Steps down once from the level the caller saw, so several documents failing together count as one problem
         void StepDown(string why, int seen)
@@ -677,7 +741,7 @@ public sealed class BulkImportService
             }
             AppLog.Info("BulkImport", $"Job #{job.Id}: AI settings eased to level {level} ({why})");
             Db.Audit("ai.settings", "ai", null, $"Bulk import eased its AI settings: {what}", $"Job #{job.Id}. Reason: {why}.");
-            Report(job, ImportPhase.Analysing, done, queue.Count, "", $"This PC is struggling ({why}), so CaseKeeper is now {what}.", null);
+            Report(job, ImportPhase.Analysing, done, queue.Count, "", $"{(cloud != null ? "The AI service is struggling" : "This PC is struggling")} ({why}), so CaseKeeper is now {what}.", null);
         }
 
         async Task Enter(CancellationToken token)
@@ -703,7 +767,8 @@ public sealed class BulkImportService
                 if (doc == null || doc.DeletedAt != null) { f.AnalysisValue = AnalysisState.Skipped; Save(f); return; }
                 var pages = Db.GetAllPageText(doc.Id);
                 DocumentAnalyzer current;
-                lock (gate) current = analyzer;
+                bool local = localAnalyzer != null && viaLocal.Contains(f.Id);
+                lock (gate) current = local ? localAnalyzer : analyzer;
                 var fingerprint = current.InputFingerprint(doc, pages);
                 if (f.AnalysisFingerprint == fingerprint)
                 {
@@ -723,11 +788,12 @@ public sealed class BulkImportService
                     for (int attempt = 0; attempt < 3; attempt++)
                     {
                         int seen;
-                        lock (gate) { current = analyzer; seen = level; }
+                        lock (gate) { current = local ? localAnalyzer : analyzer; seen = level; }
                         fingerprint = current.InputFingerprint(doc, pages);
                         result = await current.AnalyseAsync(doc, pages, job.Id, stopOnLoss.Token);
                         if (result.Ok || result.ErrorCode is not ("AI_OVERLOAD" or "AI_TIMEOUT") || seen >= LastLevel) break;
-                        StepDown(result.ErrorCode == "AI_OVERLOAD" ? "the AI ran out of memory" : "the AI was taking too long to answer", seen);
+                        if (local) break;
+                        StepDown(result.ErrorCode == "AI_OVERLOAD" ? (cloud != null ? "the AI service was busy" : "the AI ran out of memory") : "the AI was taking too long to answer", seen);
                     }
                     if (result.Ok)
                     {

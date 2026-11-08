@@ -359,13 +359,21 @@ public class LibraryService
     }
 
     /// <summary>The document's real contents, decrypted if the library is protected.</summary>
-    public byte[] ReadDocumentBytes(CaseDocument d) => Vault.UnprotectFile(File.ReadAllBytes(GetFilePath(d)));
+    public byte[] ReadDocumentBytes(CaseDocument d)
+    {
+        var path = GetFilePath(d);
+        return Vault.UnprotectFile(File.ReadAllBytes(path), DocBinding(path));
+    }
+
+    /// <summary>What a document file's encryption is bound to: its stored file name.</summary>
+    public static string DocBinding(string storedNameOrPath) => Vault.BindingFor("doc", storedNameOrPath);
+    private static readonly string ExportBinding = Vault.BindingFor("export");
 
     public Stream OpenDocument(CaseDocument d) => new MemoryStream(ReadDocumentBytes(d), writable: false);
 
     /// <summary>Writes a document into the library, encrypting it when the library is protected.</summary>
     private void WriteStoredFile(string storedName, byte[] plain) =>
-        File.WriteAllBytes(Path.Combine(FilesFolder, storedName), Vault.ProtectFile(plain));
+        File.WriteAllBytes(Path.Combine(FilesFolder, storedName), Vault.ProtectFile(plain, DocBinding(storedName)));
 
     /// <summary>Copies a file into the library and records it. Page counting and text scanning happen afterwards.</summary>
     public CaseDocument Import(string sourcePath, CaseDocument details, string hash = null)
@@ -628,7 +636,7 @@ public class LibraryService
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".part";
-        File.WriteAllBytes(temp, IsInsideExports(path) && Vault.IsEncrypted ? Vault.ProtectFile(data) : data);
+        File.WriteAllBytes(temp, IsInsideExports(path) && Vault.IsEncrypted ? Vault.ProtectFile(data, ExportBinding) : data);
         if (File.Exists(path)) File.Delete(path);
         File.Move(temp, path);
     }
@@ -638,11 +646,11 @@ public class LibraryService
     {
         if (!Vault.IsEncrypted || !IsInsideExports(path) || !File.Exists(path)) return;
         var bytes = File.ReadAllBytes(path);
-        if (!Vault.LooksEncrypted(bytes)) WriteAtomic(path, Vault.ProtectFile(bytes));
+        if (!Vault.LooksEncrypted(bytes)) WriteAtomic(path, Vault.ProtectFile(bytes, ExportBinding));
     }
 
     /// <summary>The readable contents of an exported file, decrypting it if needed.</summary>
-    public byte[] ReadExport(string path) => Vault.UnprotectFile(File.ReadAllBytes(path));
+    public byte[] ReadExport(string path) => Vault.UnprotectFile(File.ReadAllBytes(path), ExportBinding);
 
     /// <summary>
     /// A path another program can open: the file itself when it's readable, otherwise a decrypted
@@ -655,7 +663,7 @@ public class LibraryService
         var dir = Path.Combine(TempCopiesFolder, Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         var dest = Path.Combine(dir, Path.GetFileName(path));
-        File.WriteAllBytes(dest, Vault.UnprotectFile(bytes));
+        File.WriteAllBytes(dest, Vault.UnprotectFile(bytes, ExportBinding));
         return dest;
     }
 
@@ -670,8 +678,8 @@ public class LibraryService
                 {
                     var bytes = File.ReadAllBytes(f);
                     bool isEnc = Vault.LooksEncrypted(bytes);
-                    if (encrypt && !isEnc) WriteAtomic(f, Vault.ProtectFile(bytes));
-                    else if (!encrypt && isEnc) WriteAtomic(f, Vault.UnprotectFile(bytes));
+                    if (encrypt && !isEnc) WriteAtomic(f, Vault.ProtectFile(bytes, ExportBinding));
+                    else if (!encrypt && isEnc) WriteAtomic(f, Vault.UnprotectFile(bytes, ExportBinding));
                 }
                 catch (Exception ex) { AppLog.Warn("Protection", "Couldn't convert an exported file", ex); }
             }
@@ -761,7 +769,7 @@ public class LibraryService
         for (int i = 0; i < files.Length; i++)
         {
             var bytes = File.ReadAllBytes(files[i]);
-            if (Vault.LooksEncrypted(bytes)) WriteAtomic(files[i], Vault.UnprotectFile(bytes));
+            if (Vault.LooksEncrypted(bytes)) WriteAtomic(files[i], Vault.UnprotectFile(bytes, DocBinding(files[i])));
             if (i % 5 == 0) progress?.Report($"Decrypting documents… {i + 1} of {files.Length}");
         }
         Vault.Remove();
@@ -774,9 +782,59 @@ public class LibraryService
         for (int i = 0; i < files.Length; i++)
         {
             var bytes = File.ReadAllBytes(files[i]);
-            if (!Vault.LooksEncrypted(bytes)) WriteAtomic(files[i], Vault.ProtectFile(bytes));
+            if (!Vault.LooksEncrypted(bytes)) WriteAtomic(files[i], Vault.ProtectFile(bytes, DocBinding(files[i])));
+            else if (Vault.IsLegacyFormat(bytes)) WriteAtomic(files[i], Vault.UpgradeFile(bytes, DocBinding(files[i])));
             if (i % 5 == 0) progress?.Report($"Encrypting documents… {i + 1} of {files.Length}");
         }
+    }
+
+    /// <summary>Set once every encrypted file in the library is bound to its name (0.6.0 and later).</summary>
+    public const string BoundFilesSetting = "vault.boundFiles";
+
+    /// <summary>
+    /// Brings a protected library's files up to the bound format: each document is re-encrypted so it can
+    /// only be read as itself, and exports likewise. Safe to interrupt and re-run; each file is replaced in
+    /// one step. When every file is done, old-format files stop being accepted (see Vault.AllowLegacyFiles).
+    /// Returns how many files were converted.
+    /// </summary>
+    public int UpgradeFileBinding(CancellationToken ct = default)
+    {
+        if (!Vault.IsEncrypted || !Vault.IsUnlocked) return 0;
+        if (Db.GetSetting(BoundFilesSetting, "0") == "1") { Vault.AllowLegacyFiles = false; return 0; }
+        int converted = 0, failed = 0;
+        void Upgrade(string f, string binding)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var upgraded = Vault.UpgradeFile(File.ReadAllBytes(f), binding);
+                if (upgraded == null) return;
+                var temp = f + ".tmp";
+                File.WriteAllBytes(temp, upgraded);
+                File.Move(temp, f, overwrite: true);   // one step, so nothing ever reads a missing file
+                converted++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
+            {
+                failed++;
+                AppLog.Warn("Protection", "Couldn't convert a file to the current encryption format", ex);
+            }
+        }
+        if (Directory.Exists(FilesFolder))
+            foreach (var f in Directory.GetFiles(FilesFolder).Where(f => !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)))
+                Upgrade(f, DocBinding(f));
+        if (Directory.Exists(ExportsFolder))
+            foreach (var f in Directory.EnumerateFiles(ExportsFolder, "*", SearchOption.AllDirectories).ToList())
+                Upgrade(f, ExportBinding);
+        if (failed == 0)
+        {
+            Db.SetSetting(BoundFilesSetting, "1");
+            Vault.AllowLegacyFiles = false;
+            if (converted > 0)
+                Db.Audit("protection.upgrade", "library", null, "Encrypted files bound to their names",
+                    $"{converted} file(s) re-encrypted in the current format (AES-256-GCM with the file's identity as associated data)");
+        }
+        return converted;
     }
 
     /// <summary>Write via a temporary file so a crash can't leave a half-written document.</summary>

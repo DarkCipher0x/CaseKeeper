@@ -28,7 +28,8 @@ public class WrongPasswordException : Exception
 public sealed class Vault
 {
     public const string FileName = "vault.json";
-    private const string Magic = "CKE1";                 // marks an encrypted document file
+    private const string Magic = "CKE1";                 // an encrypted file, from before 0.6.0 (not bound to its name)
+    private const string Magic2 = "CKE2";                // an encrypted file bound to where it belongs (see BindingFor)
     private const int SaltBytes = 16, NonceBytes = 12, TagBytes = 16, KeyBytes = 32;
     private const string VerifierText = "CaseKeeper vault v1";
 
@@ -182,37 +183,80 @@ public sealed class Vault
     private byte[] RequireKey() =>
         _masterKey ?? throw new InvalidOperationException("The library is locked.");
 
-    public static bool LooksEncrypted(byte[] data) =>
-        data.Length >= Magic.Length && Encoding.ASCII.GetString(data, 0, Magic.Length) == Magic;
+    private static string MagicOf(byte[] data) =>
+        data.Length >= Magic.Length ? Encoding.ASCII.GetString(data, 0, Magic.Length) : "";
 
-    /// <summary>Encrypts a document for storage. Returns the bytes unchanged if the library isn't protected.</summary>
-    public byte[] ProtectFile(byte[] plain)
+    public static bool LooksEncrypted(byte[] data) => MagicOf(data) is Magic or Magic2;
+
+    /// <summary>True for a file encrypted before 0.6.0, which isn't yet bound to its name.</summary>
+    public static bool IsLegacyFormat(byte[] data) => MagicOf(data) == Magic;
+
+    /// <summary>
+    /// What an encrypted file is bound to. A document is bound to its stored file name (a random GUID
+    /// that never changes), so the authentication tag only checks out for that one file: swapping two
+    /// encrypted documents, or putting an export or another library's file in a document's place, makes
+    /// decryption fail instead of silently showing the wrong evidence. Exports are bound to their kind
+    /// only, because people rename them.
+    /// </summary>
+    public static string BindingFor(string kind, string fileName = null) =>
+        kind + ":" + (fileName == null ? "" : Path.GetFileName(fileName).ToLowerInvariant());
+
+    /// <summary>
+    /// When false, a document file in the old unbound format is refused rather than read. CaseKeeper sets it
+    /// once every file in the library has been converted, so an old copy can't be slipped back in.
+    /// </summary>
+    public bool AllowLegacyFiles { get; set; } = true;
+
+    /// <summary>Encrypts a file for storage, bound to <paramref name="binding"/>. Returns the bytes unchanged if the library isn't protected.</summary>
+    public byte[] ProtectFile(byte[] plain, string binding)
     {
+        ArgumentNullException.ThrowIfNull(binding);
         if (!IsEncrypted) return plain;
         if (LooksEncrypted(plain)) return plain;        // already done; makes migration repeatable
-        var body = Encrypt(plain, RequireKey());
-        var result = new byte[Magic.Length + body.Length];
-        Encoding.ASCII.GetBytes(Magic).CopyTo(result, 0);
-        body.CopyTo(result, Magic.Length);
+        var body = Encrypt(plain, RequireKey(), Aad(binding));
+        var result = new byte[Magic2.Length + body.Length];
+        Encoding.ASCII.GetBytes(Magic2).CopyTo(result, 0);
+        body.CopyTo(result, Magic2.Length);
         return result;
     }
 
-    /// <summary>Decrypts a stored document. Returns the bytes unchanged if they were never encrypted.</summary>
-    public byte[] UnprotectFile(byte[] stored)
+    /// <summary>Decrypts a stored file that must be bound to <paramref name="binding"/>. Returns the bytes unchanged if they were never encrypted.</summary>
+    public byte[] UnprotectFile(byte[] stored, string binding)
     {
-        if (!LooksEncrypted(stored)) return stored;
-        return Decrypt(stored.AsSpan(Magic.Length).ToArray(), RequireKey());
+        ArgumentNullException.ThrowIfNull(binding);
+        switch (MagicOf(stored))
+        {
+            case Magic2:
+                return Decrypt(stored.AsSpan(Magic2.Length).ToArray(), RequireKey(), Aad(binding));
+            case Magic:
+                if (!AllowLegacyFiles)
+                    throw new CryptographicException("This file is in an old encrypted format that this library no longer accepts.");
+                return Decrypt(stored.AsSpan(Magic.Length).ToArray(), RequireKey(), null);
+            default:
+                return stored;
+        }
     }
+
+    /// <summary>Re-encrypts a pre-0.6.0 file in the bound format. Returns null if it doesn't need it.</summary>
+    public byte[] UpgradeFile(byte[] stored, string binding)
+    {
+        if (!IsLegacyFormat(stored)) return null;
+        var plain = Decrypt(stored.AsSpan(Magic.Length).ToArray(), RequireKey(), null);
+        try { return ProtectFile(plain, binding); }
+        finally { CryptographicOperations.ZeroMemory(plain); }
+    }
+
+    private static byte[] Aad(string binding) => Encoding.UTF8.GetBytes("CaseKeeper file v2|" + binding);
 
     // ------------------------------------------------------------------ AES-256-GCM
     // Layout: nonce (12) | tag (16) | ciphertext. GCM authenticates as well as encrypts, which is
     // what makes a wrong password fail loudly instead of returning rubbish.
-    private static byte[] Encrypt(byte[] plain, byte[] key)
+    private static byte[] Encrypt(byte[] plain, byte[] key, byte[] aad = null)
     {
         var nonce = RandomNumberGenerator.GetBytes(NonceBytes);
         var cipher = new byte[plain.Length];
         var tag = new byte[TagBytes];
-        using (var aes = new AesGcm(key, TagBytes)) aes.Encrypt(nonce, plain, cipher, tag);
+        using (var aes = new AesGcm(key, TagBytes)) aes.Encrypt(nonce, plain, cipher, tag, aad);
 
         var result = new byte[NonceBytes + TagBytes + cipher.Length];
         nonce.CopyTo(result, 0);
@@ -221,7 +265,7 @@ public sealed class Vault
         return result;
     }
 
-    private static byte[] Decrypt(byte[] blob, byte[] key)
+    private static byte[] Decrypt(byte[] blob, byte[] key, byte[] aad = null)
     {
         if (blob.Length < NonceBytes + TagBytes) throw new CryptographicException("Data is too short to be valid.");
         var nonce = blob.AsSpan(0, NonceBytes);
@@ -229,7 +273,7 @@ public sealed class Vault
         var cipher = blob.AsSpan(NonceBytes + TagBytes);
         var plain = new byte[cipher.Length];
         using var aes = new AesGcm(key, TagBytes);
-        aes.Decrypt(nonce, cipher, tag, plain);
+        aes.Decrypt(nonce, cipher, tag, plain, aad);
         return plain;
     }
 

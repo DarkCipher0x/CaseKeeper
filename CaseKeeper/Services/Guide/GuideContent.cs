@@ -99,10 +99,16 @@ public static class GuideContent
             "Bulk analysis uses a fast model, **gemma3:4b**, by default – *Review options* offers to download it if it isn't installed. Choose **Fast (recommended)** or **Careful** (a larger model, only when your graphics card can hold it). " +
             "CaseKeeper looks at your graphics card, memory and power and recommends settings: a PC without a suitable graphics card and little memory starts with AI off; a basic PC or a laptop on battery reads one document at a time for categories and document details only; a PC with a graphics card reads two to four documents at once in full. *Review options* shows *This PC: …*, marks models that are too large, and has **Use recommended settings**.\n\n" +
             "If your PC struggles – the AI runs out of memory, takes too long, or the model doesn't fit on the graphics card – CaseKeeper eases off by itself (fewer documents at once, smaller parts, a lighter model, then a quick reading), tells you, and carries on. Anything you choose yourself wins, with a warning if your PC can't sensibly run it. Reading several at once needs Ollama's OLLAMA_NUM_PARALLEL setting.\n\n" +
+            "## Using a cloud AI instead\n\n" +
+            "In *Review options → AI SERVICE* (or *Settings → AI*) you can have the import read by **Anthropic (Claude)**, **OpenAI (GPT)**, or either on **Microsoft Foundry** in your own Azure subscription. They're much faster on large folders; the default is the quick, low-cost model at low effort. " +
+            "Before anything is sent, **Before anything is sent** shows the address it goes to, what will be masked, sensitive subjects in the batch, and any documents that couldn't be masked well – for those you choose to read them with the local AI, skip them, or send them anyway. If you don't agree, nothing is sent and the documents wait. See *Cloud AI, masking and what's sent*.\n\n" +
+            "## Duplicates and versions\n\n" +
+            "*Import review → Duplicates & versions* groups copies and versions of the same document by comparing the words inside them, so a PDF and a Word copy of one letter, or a draft and its final version, are found. The newest is shown first with the reason (its date, then when the file was last changed). **What changed** compares any version with the newest sentence by sentence. " +
+            "**Keep newest, tag the others as older**, **Keep all, link as versions** or **Not related** – nothing is deleted, and each choice can be undone.\n\n" +
             "## If the AI isn't available\n\n" +
-            "The import still finishes. Documents wait as *Waiting – AI not available*, and CaseKeeper's own rules still suggest categories from form codes. Start Ollama, then use *Analyse N waiting* in Import review. Failed analyses can be retried the same way.\n\n" +
+            "The import still finishes. Documents wait as *Waiting – AI not available*, and CaseKeeper's own rules still suggest categories from form codes. Start Ollama (or, for a cloud AI, check you're online), then use *Analyse N waiting* in Import review. Failed analyses can be retried the same way.\n\n" +
             "## Privacy\n\n" +
-            "Everything happens on your computer. The AI only talks to your own Ollama server. Suggestions and import records are stored in your (encrypted, if protected) library and included in backups. Logs never contain document text, file names or folder paths.\n\n" +
+            "With the local AI everything happens on your computer and the AI only talks to your own Ollama server. With a cloud AI, the text of the documents being analysed goes to the service you chose, masked by default, and only after you agree. Suggestions and import records are stored in your (encrypted, if protected) library and included in backups. Logs never contain document text, file names or folder paths.\n\n" +
             "The AI is an assistant, not an authority. It can be wrong, and it does not give legal advice."),
 
         new("app.search", "Using CaseKeeper", "Searching", "search find text ocr words phrase",
@@ -138,19 +144,36 @@ public static class GuideContent
         new("app.bundles", "Using CaseKeeper", "Building a court bundle", "bundle pd27a index pagination sections court bundle",
             "*Bundles & reports* puts documents into one PDF with a cover, index, sections A–F and page numbers like B12, following the general shape of Practice Direction 27A. A summary report instead lists your documents, notes and chronology without the full documents.\n\nAlways follow what the court has directed about bundles (who prepares it, what goes in, page limits and deadlines)."),
 
-        new("app.ai", "Using CaseKeeper", "AI analysis with Ollama", "ai ollama model llm summary chronology inconsistencies local gpu prompt",
-            "CaseKeeper can use **Ollama**, a free program that runs AI models on your own computer, so your papers never leave it.\n\n" +
-            "## Setting it up\n\n#. Install Ollama from ollama.com and run it.\n#. Download a model, for example by running *ollama pull llama3.1* in a terminal (bigger models are better but slower).\n" +
-            "#. In *Settings → AI*, tick *Use AI*, check the address (usually http://localhost:11434), press *Test connection* and choose the model.\n\n" +
+        new("app.ai", "Using CaseKeeper", "AI analysis: local or cloud", "ai ollama model llm summary chronology inconsistencies local gpu prompt anthropic claude openai gpt chatgpt foundry azure cloud effort",
+            "CaseKeeper can use **Ollama**, a free program that runs AI models on your own computer, so your papers never leave it – or, if you choose, a cloud AI: **Anthropic (Claude)**, **OpenAI (GPT)**, or either on **Microsoft Foundry**. AI is off until you switch it on.\n\n" +
+            "## Setting up the local AI\n\n#. In *Settings → AI → Which AI to use*, choose *Local AI on this PC (Ollama)*.\n#. *Install Ollama* (or *Get Ollama* in the Store version, which opens its download page), then *Set up the local AI*: it finds Ollama, downloads the fast model and switches AI on.\n" +
+            "#. Or by hand: tick *Use AI features*, check the address (usually http://localhost:11434), press *Test connection* and choose the model.\n\n" +
+            "## Setting up a cloud AI\n\n#. Get an API key from Anthropic or OpenAI – or, for Microsoft Foundry, the resource name and key, with a model deployed.\n#. In *Settings → AI → Which AI to use*, choose the service, paste the key (and resource) and press *Connect*. CaseKeeper checks it, picks the recommended fast model (Claude Haiku 5.5 or GPT-6 Luna, at low effort) and switches AI on.\n" +
+            "#. Change *Model* and *Reasoning effort* if you like. Higher effort thinks for longer: more careful, slower, and more expensive.\n\n" +
+            "The key is stored encrypted for your Windows account and never goes into settings files, logs or backups. See *Cloud AI, masking and what's sent*.\n\n" +
             "## Using it\n\nOn *AI analysis*, choose what to look at (documents, a category, a party, a date range, the timeline or your records) and a report: summary, chronology, issues, inconsistencies, welfare checklist, safeguarding, questions to consider and more. **Granular** mode reads large sets part by part, then combines the results.\n\n" +
             "Every instruction the AI follows can be edited in *Settings → AI → Prompts*. The AI can be wrong: always check its output against the documents. It does not give legal advice.\n\n" +
             "## Performance\n\nUse a GPU if you have one (the default lets Ollama decide). On a laptop, choose a smaller model and the Power saver profile. A larger *context size* lets the AI read more at once but uses more memory."),
+
+        new("app.cloudai", "Using CaseKeeper", "Cloud AI, masking and what's sent", "cloud ai masking mask privacy consent anthropic openai foundry what is sent personal details trust treat with care",
+            "A cloud AI is optional and off unless you choose it in *Settings → AI*. With the local AI, nothing leaves your computer.\n\n" +
+            "## What is sent\n\n" +
+            "Only the text of the documents (or records) you ask it to analyse, plus CaseKeeper's instructions, to the one service you chose, over an encrypted connection. CaseKeeper refuses to send to any other address, never follows a redirect, and ignores settings from other programs. Your password, keys for other services and files you haven't chosen are never sent.\n\n" +
+            "## Masking\n\n" +
+            "With *Mask names and personal details before sending* ticked (the default), CaseKeeper replaces names from your parties and contacts, other names it recognises, e-mail addresses, phone numbers, postcodes, National Insurance numbers, case numbers, bank and card numbers, dates of birth and addresses with tags such as [PERSON-1]. The answer is put back with the real details on your PC. The list linking tags to details stays in memory only and is never sent or saved. " +
+            "Masking is careful but not perfect: an unusual name, a nickname or a badly scanned page can slip through.\n\n" +
+            "## Before anything is sent\n\n" +
+            "The first time you use a service, and before each bulk import, a screen shows where the documents go, how many and roughly how much text, what will be masked, sensitive subjects (for example children, health or money) and documents that couldn't be masked well. For those, choose to read them with the local AI instead, skip them, or send them anyway. If you don't agree, nothing is sent. Your choice is in the audit trail (service, address and whether masking was on – never any content). *Ask again before sending* brings the screen back.\n\n" +
+            "## The service's own terms\n\n" +
+            "What the service does with what it receives is set by its terms: Anthropic and OpenAI may keep requests for a limited time; Microsoft Foundry keeps them in your own Azure subscription. Check the terms before sending anything sensitive.\n\n" +
+            "## Treat with care\n\n" +
+            "Whichever AI you use, CaseKeeper flags documents that deserve a second look – Office files that can contain macros, badly scanned text, or a date written in the document that's later than the file was last changed – under *Conflicts & checks* in Import review."),
 
         new("app.assistant", "Using CaseKeeper", "The help assistant", "help assistant chat ask how do i directions ai navigate",
             "The **Help assistant** (in the sidebar under Help & system) answers \"how do I…?\" questions about CaseKeeper in plain English. " +
             "Type what you want to do – *\"How do I put my case number on every letter?\"*, *\"Where do I record a missed handover?\"* – " +
             "and you get numbered steps using the exact names on screen, with buttons that take you straight there.\n\n" +
-            "- It uses your local AI (Ollama) and knows a full map of CaseKeeper's screens, buttons and menus, plus this guide, so it " +
+            "- It uses the AI you chose in *Settings → AI* and knows a full map of CaseKeeper's screens, buttons and menus, plus this guide, so it " +
             "gives directions for things that really exist.\n" +
             "- **Only your question is sent** to your AI – nothing about your case, documents or parties.\n" +
             "- It remembers the conversation, so you can ask follow-ups such as \"and how do I export it?\". *New conversation* starts again.\n" +

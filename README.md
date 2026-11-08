@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.5.1-3dd6c8" alt="Version 0.5.1">
+  <img src="https://img.shields.io/badge/version-0.6.0-3dd6c8" alt="Version 0.6.0">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b7a75" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-3dd6c8" alt="MIT licence"></a>
@@ -23,11 +23,14 @@
 
 A private Windows app for running a family court case in England & Wales: documents, hearings and orders,
 directions and deadlines, a contact log, costs, letters and statements on your own letterhead, court bundles,
-a built-in guide to the family courts, and optional AI analysis that runs on your own computer.
+a built-in guide to the family courts, and optional AI analysis – on your own computer, or with a cloud AI you
+choose.
 
 **Everything stays on your own computer.** Documents are copied into a local library, text recognition uses the
-engine built into Windows, and nothing is uploaded anywhere. The optional AI only talks to an Ollama server you
-choose – normally your own PC. *Check for updates* only downloads, and only when you ask.
+engine built into Windows, and nothing is uploaded anywhere unless you choose a cloud AI. The optional AI talks to an
+Ollama server you choose – normally your own PC – or, if you set one up, to Anthropic, OpenAI or Microsoft Foundry:
+then names and personal details are masked first, and nothing is sent until you agree. *Check for updates* only
+downloads, and only when you ask.
 
 > CaseKeeper is an organising tool. It does not give legal advice, and nothing it produces replaces advice from a
 > solicitor, barrister or advice service.
@@ -52,7 +55,7 @@ Both use the same library, so you can switch between them without losing anythin
 **Check your download.** Each release lists SHA-256 checksums in `SHA256SUMS.txt`. In PowerShell:
 
 ```powershell
-Get-FileHash .\CaseKeeper-Setup-v0.5.1.exe -Algorithm SHA256
+Get-FileHash .\CaseKeeper-Setup-v0.6.0.exe -Algorithm SHA256
 ```
 
 The result should match the line for that file exactly. If it doesn't, don't run it.
@@ -102,9 +105,17 @@ signatures don't vouch for.
 - **UK Family Law Guide & FAQ** – searchable, plain English, with a glossary – and a full how-to for the app.
 - **Help assistant** – ask "how do I…?" and get step-by-step directions with buttons that open the right screen,
   grounded in a map of the app and the user guide (local AI; only the question is sent).
-- **Optional local AI via Ollama** – summaries, chronologies, issues, inconsistencies, welfare-checklist mapping,
-  safeguarding and more, over any selection of documents, with map-reduce for large sets. Every prompt is editable;
-  GPU/CPU, threads and context size are configurable.
+- **Optional AI: local (Ollama) or cloud** – summaries, chronologies, issues, inconsistencies, welfare-checklist
+  mapping, safeguarding and more, over any selection of documents, with map-reduce for large sets. Every prompt is
+  editable; GPU/CPU, threads and context size are configurable.
+- **One-click AI set-up** – install Ollama and the quick model, or paste a key for **Anthropic (Claude)**, **OpenAI
+  (GPT)**, **Claude on Microsoft Foundry** or **OpenAI on Microsoft Foundry** and press *Connect*. Choose the model and
+  reasoning effort; the default is quick and low-cost (Claude Haiku 5.5 / GPT-6 Luna, low effort).
+- **Masking and a pre-send review for cloud AI** – names, contact details, NI, case, bank and card numbers, dates of
+  birth and addresses are replaced with tags before sending and put back on your PC; a review screen shows where it
+  goes, what's masked and which documents couldn't be masked well (read those locally, skip them, or send anyway).
+- **Duplicates & versions** – finds copies and versions of the same document by their words (a PDF and a Word copy, a
+  draft and its final), shows which is newest and why, and what changed, sentence by sentence.
 
 **Safety**
 - **Audit trail** of every change (old → new values), chained with SHA-256 fingerprints so tampering is detectable.
@@ -185,7 +196,7 @@ To build a release installer, see [RELEASING.md](RELEASING.md).
   answers, the per-document analyser, cross-document checks, the resumable job runner and approvals (see
   [docs/BULK-IMPORT.md](docs/BULK-IMPORT.md))
 - `Services/` – library, vault (AES-256-GCM), backup, OCR, PDF rendering, logging, performance profiles, session lock,
-  deadlines, settings transfer, the signed updater (`Updater.cs`, `Pqc.cs`), the Ollama client (`Ai/`), the guide content (`Guide/`) and the document engine
+  deadlines, settings transfer, the signed updater (`Updater.cs`, `Pqc.cs`), the AI clients – Ollama, Anthropic, OpenAI and Foundry – and the masker (`Ai/`), the guide content (`Guide/`) and the document engine
   (`Documents/` – one model rendered to Word via OpenXML, PDF via PDFsharp, HTML and on-screen preview)
 - `Views/` – WPF windows; `Views/Modules/` the case screens; `Views/Forms/` the shared record list and form
 - `Themes/` – light and dark palettes · `installer/` – the Inno Setup script · `packaging/store/` – the

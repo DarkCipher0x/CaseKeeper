@@ -44,8 +44,67 @@ public static class AiService
     public static bool AllowRemote => Db.GetSetting("ai.allowRemote", "0") == "1";
     public static bool IncludeCaseSummary => Db.GetSetting("ai.includeCaseSummary", "1") == "1";
 
+    // ------------------------------------------------------------------ provider (local or cloud)
+    /// <summary>Which AI CaseKeeper uses: "local" (Ollama, the default) or one of the cloud services in <see cref="AiProviders"/>.</summary>
+    public static string Provider => AiProviders.Get(Db.GetSetting("ai.provider", AiProviders.Local)).Id;
+    public static bool UsingCloud => AiProviders.IsCloud(Provider);
+    /// <summary>Replace names and other personal details with placeholders before anything goes to a cloud AI. On unless turned off.</summary>
+    public static bool MaskCloud => Db.GetSetting("ai.cloud.mask", "1") != "0";
+    /// <summary>Documents read at once by a cloud AI (it slows down by itself if the service says it's busy).</summary>
+    public static int CloudWorkers => int.TryParse(Db.GetSetting("ai.cloud.concurrency", "4"), out var n) ? Math.Clamp(n, 1, 8) : 4;
+
+    public static string ProviderModel(string provider) =>
+        (Db.GetSetting($"ai.{provider}.model", "") ?? "").Trim() is { Length: > 0 } m ? m : AiProviders.Get(provider).DefaultModel;
+    public static string ProviderEffort(string provider) =>
+        (Db.GetSetting($"ai.{provider}.effort", "") ?? "").Trim() is { Length: > 0 } e && AiProviders.Get(provider).Efforts.Any(x => x.Id == e)
+            ? e : AiProviders.Get(provider).DefaultEffort;
+    public static string ProviderResource(string provider) => (Db.GetSetting($"ai.{provider}.resource", "") ?? "").Trim();
+
+    /// <summary>A cloud service's key, encrypted with Windows (DPAPI) for this Windows account only. Never exported or logged.</summary>
+    public static string ProviderKey(string provider)
+    {
+        var stored = Db.GetSetting($"ai.{provider}.key", "");
+        if (string.IsNullOrEmpty(stored)) return "";
+        try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(stored), KeyEntropy(provider), DataProtectionScope.CurrentUser)); }
+        catch { return ""; }   // encrypted for another account or PC: ask again
+    }
+
+    public static void SetProviderKey(string provider, string key)
+    {
+        if (string.IsNullOrEmpty(key)) { Db.SetSetting($"ai.{provider}.key", ""); return; }
+        var bytes = Encoding.UTF8.GetBytes(key);
+        try { Db.SetSetting($"ai.{provider}.key", Convert.ToBase64String(ProtectedData.Protect(bytes, KeyEntropy(provider), DataProtectionScope.CurrentUser))); }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+    }
+
+    public static bool HasProviderKey(string provider) => !string.IsNullOrEmpty(Db.GetSetting($"ai.{provider}.key", ""));
+
+    private static byte[] KeyEntropy(string provider) => Encoding.UTF8.GetBytes($"CaseKeeper.ai.{provider}.key.v1");
+
+    /// <summary>Everything a cloud request needs, read fresh from Settings (the key is decrypted just for this).</summary>
+    public static CloudConfig CloudConfigFor(string provider, string model = null, string effort = null) =>
+        new(provider, ProviderKey(provider), ProviderResource(provider), string.IsNullOrWhiteSpace(model) ? ProviderModel(provider) : model.Trim(),
+            string.IsNullOrWhiteSpace(effort) ? ProviderEffort(provider) : effort, TimeoutMinutes);
+
+    /// <summary>A masker that knows the case's own people (the most reliable names to hide).</summary>
+    public static Masker NewMasker()
+    {
+        var parties = Db.GetParties();
+        return new Masker(parties.Select(p => p.Name).Concat(parties.Select(p => p.Representative)), parties.Select(p => p.Contact));
+    }
+
+    /// <summary>The model in use, for labels.</summary>
+    public static string ActiveModel => UsingCloud ? ProviderModel(Provider) : Model;
+    /// <summary>Where requests go, for labels and the audit trail.</summary>
+    public static string ActiveHost => UsingCloud ? AiProviders.BaseAddress(Provider, ProviderResource(Provider)).Host
+        : Uri.TryCreate(Endpoint, UriKind.Absolute, out var u) ? u.Host : Endpoint;
+    /// <summary>"gemma3:4b on your Ollama server" or "claude-haiku-5-5 from Anthropic (Claude) (api.anthropic.com), personal details masked".</summary>
+    public static string ActiveDescription => UsingCloud
+        ? $"{ActiveModel} from {AiProviders.Get(Provider).Name} ({ActiveHost}){(MaskCloud ? ", personal details masked" : "")}"
+        : $"{(string.IsNullOrWhiteSpace(Model) ? "(no model chosen)" : Model)} on your Ollama server";
+
     /// <summary>Roughly how much text fits in one request, leaving room for the instructions and the answer.</summary>
-    public static int ChunkChars => Math.Max(4000, (int)((ContextTokens - MaxOutputTokens - 800) * 3.2));
+    public static int ChunkChars => UsingCloud ? 160_000 : Math.Max(4000, (int)((ContextTokens - MaxOutputTokens - 800) * 3.2));
 
     public static string ApiKey
     {
@@ -98,18 +157,60 @@ public static class AiService
         return null;
     }
 
-    /// <summary>Makes sure AI is switched on and set up, offering to go to Settings if not.</summary>
-    public static bool EnsureEnabled(Window owner)
+    /// <summary>Makes sure AI is switched on and set up, offering to go to Settings if not. Cloud AI asks for consent once.</summary>
+    public static bool EnsureEnabled(Window owner, string provider = null)
     {
+        provider ??= Provider;
+        bool cloud = AiProviders.IsCloud(provider);
         string problem = !Enabled ? "The AI tools are switched off."
+            : cloud ? AiProviders.Check(CloudConfigFor(provider))
             : string.IsNullOrWhiteSpace(Model) ? "No AI model has been chosen yet."
             : CheckEndpoint(Endpoint, AllowRemote);
-        if (problem == null) return true;
-        if (MessageBox.Show(owner, problem + "\n\nCaseKeeper's AI features use Ollama, a free program that runs AI models on your own " +
-                                   "computer so your documents never leave it.\n\nOpen the AI settings now?", "AI tools",
+        // Bulk import shows its own detailed review before every cloud run, so the one-off consent is for everything else
+        if (problem == null) return !cloud || provider != Provider || EnsureCloudConsent(owner);
+        if (MessageBox.Show(owner, problem + (cloud ? "" : "\n\nCaseKeeper's AI features use Ollama, a free program that runs AI models on your own " +
+                                   "computer so your documents never leave it, or a cloud AI service you choose.") + "\n\nOpen the AI settings now?", "AI tools",
                 MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
             Views.MainWindow.Shell?.GoToSettings("ai");
         return false;
+    }
+
+    /// <summary>
+    /// The first time a cloud AI is used for anything, says plainly where material will go and asks to continue.
+    /// Asked again for each provider. Bulk Case Import also shows its own review before every run.
+    /// </summary>
+    public static bool HasCloudConsent(string provider) => Db.GetSetting($"ai.cloud.consent.{provider}", "0") == "1";
+
+    public static bool EnsureCloudConsent(Window owner, string provider = null)
+    {
+        provider ??= Provider;
+        var key = $"ai.cloud.consent.{provider}";
+        if (Db.GetSetting(key, "0") == "1") return true;
+        var p = AiProviders.Get(provider);
+        var host = AiProviders.BaseAddress(provider, ProviderResource(provider)).Host;
+        if (MessageBox.Show(owner,
+                $"The AI tools are set to use {p.Name}.\n\nWhatever you ask the AI to read (documents, notes, the case summary) will be sent over an " +
+                $"encrypted connection to {host}, which is outside this PC. " +
+                (MaskCloud ? "Names and other personal details CaseKeeper recognises are replaced with placeholders first, and put back in the answer here. Masking is best effort and can miss things."
+                           : "Masking is OFF, so personal details are sent as they are.") + "\n\n" +
+                (p.IsFoundry ? "With Microsoft Foundry it stays in your own Azure subscription, under your Azure terms."
+                             : $"It's handled under {p.Name}'s API terms, which can include keeping it for a limited time.") +
+                " CaseKeeper records that you agreed, never the content.\n\nUse this cloud AI?", "Cloud AI – what is sent",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return false;
+        Db.SetSetting(key, "1");
+        Db.Audit("ai.consent", "ai", null, $"Agreed to use {p.Name} for AI features", $"Host: {host}. Masking: {(MaskCloud ? "on" : "off")}.");
+        return true;
+    }
+
+    /// <summary>Forgets every "agreed to use this cloud AI", so each asks again.</summary>
+    public static void ResetCloudConsent()
+    {
+        foreach (var p in AiProviders.All.Where(p => p.IsCloud))
+        {
+            Db.SetSetting($"ai.cloud.consent.{p.Id}", "");
+            Db.SetSetting($"bulk.cloudReview.skip.{p.Id}", "");
+        }
+        Db.Audit("settings.change", "settings", null, "Cloud AI consent reset", "");
     }
 
     // ------------------------------------------------------------------ requests
@@ -169,6 +270,7 @@ public static class AiService
     /// <summary>A conversation: earlier turns as (role, text) pairs, "user" or "assistant", ending with the new question.</summary>
     public static async Task<string> ChatAsync(string system, IEnumerable<(string Role, string Content)> turns, Action<string> onToken, CancellationToken ct)
     {
+        if (UsingCloud) return await CloudChatAsync(system, turns.ToList(), onToken, ct);
         var problem = CheckEndpoint(Endpoint, AllowRemote);
         if (problem != null) throw new InvalidOperationException(problem);
         if (string.IsNullOrWhiteSpace(Model)) throw new InvalidOperationException("Choose an AI model in Settings first.");
@@ -219,6 +321,39 @@ public static class AiService
             }
             if (node?["done"]?.GetValue<bool>() == true) break;
         }
+        return sb.ToString();
+    }
+
+    /// <summary>A conversation with the cloud AI, masked when masking is on, with the answer unmasked as it streams in.</summary>
+    private static async Task<string> CloudChatAsync(string system, List<(string Role, string Content)> turns, Action<string> onToken, CancellationToken ct)
+    {
+        // The last check, whichever screen asked: nothing goes to a cloud AI the person hasn't agreed to
+        if (!HasCloudConsent(Provider))
+            throw new InvalidOperationException("You haven't agreed to use this cloud AI yet. Use the AI tools again to see what is sent and agree.");
+        var config = CloudConfigFor(Provider);
+        var masker = MaskCloud ? NewMasker() : null;
+        if (masker != null)
+        {
+            system = (system ?? "") + "\n\n" + Masker.Instructions;
+            turns = turns.Select(t => (t.Role, masker.Mask(t.Content))).ToList();
+        }
+        var stream = masker != null ? new Masker.StreamUnmasker(masker) : null;
+        var sb = new StringBuilder();
+        void Piece(string p)
+        {
+            var shown = stream != null ? stream.Push(p) : p;
+            if (shown.Length == 0) return;
+            sb.Append(shown);
+            onToken?.Invoke(shown);
+        }
+        try
+        {
+            await CloudAi.CompleteAsync(config, system, turns, null, Math.Max(MaxOutputTokens, 4096), Piece, ct);
+        }
+        catch (BulkImport.AiUnavailableException ex) { throw new HttpRequestException(ex.Message, ex); }
+        catch (BulkImport.AiOverloadException ex) { throw new HttpRequestException(ex.Message + " Wait a minute and try again.", ex); }
+        catch (BulkImport.AnalysisValidationException ex) { throw new HttpRequestException(ex.Message, ex); }
+        if (stream != null && stream.Flush() is { Length: > 0 } rest) { sb.Append(rest); onToken?.Invoke(rest); }
         return sb.ToString();
     }
 
@@ -358,12 +493,28 @@ public static class AiService
     public static string BulkPreset => Db.GetSetting("bulk.preset", "fast") == "careful" ? "careful" : "fast";
     /// <summary>A model the person picked themselves for bulk analysis; empty means "recommended".</summary>
     public static string BulkModelOverride => (Db.GetSetting("bulk.model", "") ?? "").Trim();
+    /// <summary>The AI Bulk Case Import uses: the person's choice in Review options, otherwise the one in Settings → AI.</summary>
+    public static string BulkProvider => (Db.GetSetting("bulk.provider", "") ?? "") is { Length: > 0 } p ? AiProviders.Get(p).Id : Provider;
+    /// <summary>A cloud model and effort chosen just for bulk import; empty means the ones in Settings → AI.</summary>
+    public static string BulkCloudModel => (Db.GetSetting("bulk.cloudModel", "") ?? "").Trim();
+    public static string BulkCloudEffort => (Db.GetSetting("bulk.cloudEffort", "") ?? "").Trim();
+
+    /// <summary>The AI client for one Bulk Case Import run: the local AI, or a cloud AI with a fresh masker.</summary>
+    public static BulkImport.IAiJsonClient BulkClient()
+    {
+        var p = BulkProvider;
+        if (!AiProviders.IsCloud(p)) return new OllamaJsonClient();
+        var effort = AiProviders.Get(p).Efforts.Any(e => e.Id == BulkCloudEffort) ? BulkCloudEffort : null;
+        return new CloudJsonClient(CloudConfigFor(p, BulkCloudModel, effort), MaskCloud ? NewMasker() : null, BulkDepthSetting == "categories");
+    }
+
     /// <summary>"auto", "full" or "categories".</summary>
     public static string BulkDepthSetting => Db.GetSetting("bulk.depth", "auto") is "full" or "categories" ? Db.GetSetting("bulk.depth", "auto") : "auto";
 
     /// <summary>Documents the AI reads at once: the person's choice, or this PC's tier. Always one on battery.</summary>
     public static int BulkWorkers()
     {
+        if (AiProviders.IsCloud(BulkProvider)) return CloudWorkers;
         if (Performance.OnBattery || Performance.Effective == PerformanceMode.PowerSaver) return 1;
         if (int.TryParse(Db.GetSetting("bulk.aiWorkers", ""), out var n) && n > 0) return Math.Clamp(n, 1, 4);
         return AiHardware.Tier switch { AiTier.Mid => 2, AiTier.High => 3, AiTier.VeryHigh => 4, _ => 1 };
@@ -461,10 +612,10 @@ public static class AiService
         var result = new AnalysisResult { Chunks = chunks.Count };
         int totalChars = sources.Sum(s => s.Text.Length);
 
-        Db.Audit("ai.request", "ai", null, $"AI analysis requested ({Model})",
-            $"Server: {new Uri(Endpoint).Host}\nTask: {Clip(task, 160)}\nSources: {sources.Count} ({totalChars:N0} characters)\nParts: {chunks.Count}" +
+        Db.Audit("ai.request", "ai", null, $"AI analysis requested ({ActiveModel})",
+            $"Server: {ActiveHost}{(UsingCloud ? $" ({AiProviders.Get(Provider).Name}, masking {(MaskCloud ? "on" : "off")})" : "")}\nTask: {Clip(task, 160)}\nSources: {sources.Count} ({totalChars:N0} characters)\nParts: {chunks.Count}" +
             (granular ? "\nPer-document detail: yes" : ""));
-        AppLog.Info("AI", $"Analysis started: {sources.Count} sources, {chunks.Count} part(s), model {Model}");
+        AppLog.Info("AI", $"Analysis started: {sources.Count} sources, {chunks.Count} part(s), model {ActiveModel}");
 
         if (chunks.Count == 1 && !granular)
         {

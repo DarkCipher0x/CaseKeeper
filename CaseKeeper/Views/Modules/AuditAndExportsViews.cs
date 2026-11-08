@@ -253,7 +253,7 @@ public class ExportsView : UserControl
         {
             using var fs = File.OpenRead(path);
             var head = new byte[4];
-            return fs.Read(head, 0, 4) == 4 && System.Text.Encoding.ASCII.GetString(head) == "CKE1";
+            return fs.Read(head, 0, 4) == 4 && Vault.LooksEncrypted(head);
         }
         catch { return false; }
     }
