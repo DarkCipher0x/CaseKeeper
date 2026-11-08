@@ -1,10 +1,11 @@
-# Creates the GitHub release for a version that tools\publish-public.ps1 has already tagged, and attaches the
+﻿# Creates the GitHub release for a version that tools\publish-public.ps1 has already tagged, and attaches the
 # downloadable files. build-release.ps1 runs it straight after publishing the source.
 #
 #   Release   "CaseKeeper v<ver>" on tag v<ver>, marked as the latest release
 #   Notes     that version's section of CHANGELOG.md, the Store link and the SHA-256s
-#   Files     CaseKeeper-Setup-v<ver>.exe, CaseKeeper-src-v<ver>.zip and SHA256SUMS.txt (for those two),
-#             all from dist\<ver>\ - the same files, byte for byte, as the website gets
+#   Files     CaseKeeper-Setup-v<ver>.exe, CaseKeeper-src-v<ver>.zip, the signed update information for the in-app
+#             updater (update.json, update.json.sig, update.json.pq.sig) and SHA256SUMS.txt for all five, all from
+#             dist\<ver>\ - the same files, byte for byte, as the website gets
 #
 # The .msix is not attached: it is signed only with the local test certificate, so it installs nowhere
 # else. It goes to Partner Center, and Microsoft signs it for the Store.
@@ -20,7 +21,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $repoApi = 'https://api.github.com/repos/DarkCipher0x/CaseKeeper'
 $out = Join-Path $root "dist\$Version"
 $tag = "v$Version"
-$files = "CaseKeeper-Setup-v$Version.exe", "CaseKeeper-src-v$Version.zip" | ForEach-Object { Join-Path $out $_ }
+$files = "CaseKeeper-Setup-v$Version.exe", "CaseKeeper-src-v$Version.zip", 'update.json', 'update.json.sig', 'update.json.pq.sig' | ForEach-Object { Join-Path $out $_ }
 foreach ($f in $files) { if (-not (Test-Path $f)) { throw "missing $f - run build-release.ps1 first" } }
 
 # --- the sign-in Git Credential Manager holds for github.com ----------------------
@@ -61,7 +62,7 @@ $fence = '```'
 $body = @"
 **Download** ``CaseKeeper-Setup-v$Version.exe`` below, or get CaseKeeper from the [Microsoft Store](https://apps.microsoft.com/detail/9PG5PJPHCXXF), where Microsoft signs it. Windows SmartScreen may warn about the installer because it isn't code-signed yet: check the SHA-256 below, then choose **More info → Run anyway**.
 
-Upgrading over any earlier version keeps your library exactly as it is.
+Upgrading over any earlier version keeps your library exactly as it is. From 0.5.0 on, CaseKeeper can also check for and install updates itself (Settings → Updates): ``update.json`` and its two signatures below are what it reads, and it installs nothing they don't vouch for.
 
 $($m.Groups[1].Value.Trim())
 
@@ -81,7 +82,7 @@ $up = $r.upload_url -replace '\{.*\}$', ''
 try {
     foreach ($f in @($files) + $sumsFile) {
         $n = Split-Path $f -Leaf
-        $ct = if ($n -like '*.txt') { 'text/plain' } elseif ($n -like '*.zip') { 'application/zip' } else { 'application/octet-stream' }
+        $ct = if ($n -like '*.txt' -or $n -like '*.sig') { 'text/plain' } elseif ($n -like '*.zip') { 'application/zip' } elseif ($n -like '*.json') { 'application/json' } else { 'application/octet-stream' }
         $a = Invoke-RestMethod "$up`?name=$n" -Method Post -Headers $h -ContentType $ct -InFile $f -TimeoutSec 1800
         # GitHub reports its own SHA-256 of what it stored: it must equal ours
         $local = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()

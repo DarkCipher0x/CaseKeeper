@@ -9,6 +9,8 @@ namespace CaseKeeper.Services;
 ///   library   %LOCALAPPDATA%\CaseKeeper           (as it always has been)
 ///   settings  %APPDATA%\CaseKeeper                (library-location.json, recent-libraries.json)
 ///   logs      %LOCALAPPDATA%\CaseKeeper\Logs
+///   updates   settings in updates.json beside the others (Settings → Updates); a downloaded update
+///             waits in %TEMP%\CaseKeeper-Update until it is installed
 ///
 /// Microsoft Store (MSIX package):
 ///   library   %USERPROFILE%\CaseKeeper
@@ -44,6 +46,10 @@ public static class AppPaths
     public static string LogsFolder => AppPackage.IsPackaged
         ? Path.Combine(PackageLocalState, "Logs")
         : Path.Combine(LocalAppData, "CaseKeeper", "Logs");
+
+    /// <summary>Where the website copy's in-app updater keeps a downloaded setup program until it runs
+    /// (%TEMP%\CaseKeeper-Update). Tidied on the next start; removed with "Remove all CaseKeeper data".</summary>
+    public static string UpdateWorkFolder => Path.Combine(Path.GetTempPath(), "CaseKeeper-Update");
 
     /// <summary>
     /// The Store copy's private data folder (%LOCALAPPDATA%\Packages\&lt;family&gt;\LocalState). It is a

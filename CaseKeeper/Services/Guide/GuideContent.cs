@@ -164,7 +164,7 @@ public static class GuideContent
             "- **Auto-lock** hides everything after a period of inactivity, when Windows locks, or with Ctrl+L.\n" +
             "- **Maximum security** (Settings) switches on the strictest options in one go.\n" +
             "- Decrypted copies opened in other programs are wiped when CaseKeeper closes.\n" +
-            "- Nothing is uploaded. The optional AI only talks to the server you choose, local by default.\n" +
+            "- Nothing is uploaded. The optional AI only talks to the server you choose, local by default. *Check for updates* only downloads, and only when you ask (or switch on automatic checks).\n" +
             "- Logs never contain your documents or notes, and your Windows user name is removed from them."),
 
         new("app.backup", "Using CaseKeeper", "Backups, snapshots and moving PCs", "backup restore snapshot export import settings transfer",
@@ -172,6 +172,16 @@ public static class GuideContent
             "- **Import a backup** either adds it to what's here (duplicates skipped) or replaces everything.\n" +
             "- **Snapshots** are automatic daily restore points of the database, kept inside the library.\n" +
             "- **Settings & templates file** moves your letterheads, templates, prompts and preferences to another PC on their own."),
+
+        new("app.updates", "Using CaseKeeper", "Updating CaseKeeper", "update updates upgrade new version check install signed signature setup store latest",
+            "The website version of CaseKeeper can update itself from **Settings → Updates**. The Microsoft Store version is updated by the Store (Microsoft Store → **Library** → **Get updates**).\n\n" +
+            "#. Click **Check for updates**. CaseKeeper downloads a small file that says which version is newest, with two signatures. Nothing about you, this PC or your case is sent.\n" +
+            "#. If a newer version is available you see what's new. Click **Download and verify**: the setup program must match the signed size and checksum exactly, and say it is CaseKeeper by DarkCipher Systems.\n" +
+            "#. Click **Install… (backup first)**. You're offered a backup, CaseKeeper takes a safety snapshot and closes, and the normal setup wizard runs. Your library, settings and password protection are not touched.\n" +
+            "#. When CaseKeeper opens again it tells you whether the update worked.\n\n" +
+            "**Why you can trust it.** An update is only offered when it is signed by both CaseKeeper release keys built into your copy: a classical one (ECDSA P-256) and a post-quantum one (ML-DSA-65). " +
+            "The website or GitHub only carry the files, so nothing changed there can get through, and an older version is never offered as new.\n\n" +
+            "**Automatic checks** are off until you switch them on. Then CaseKeeper checks once a week (or once a day) shortly after it starts and shows a notice; it can also download and verify the update in the background. Installing always asks you first."),
 
         new("app.audit", "Using CaseKeeper", "The audit trail and logs", "audit trail history log tamper evidence integrity hash chain errors",
             "Every change – documents imported, details edited, notes, hearings, letters, exports, backups, AI requests – is recorded in the **audit trail** with the date and time, and what changed.\n\n" +

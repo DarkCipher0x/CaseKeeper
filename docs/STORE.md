@@ -11,7 +11,7 @@ alongside the website installer, which stays as it is (see [RELEASING.md](../REL
 | Built by | `build-release.ps1` | `build-store.ps1` |
 | Signed by | Nobody yet, so SmartScreen warns ([below](#signing-the-website-installer)) | **Microsoft**, automatically, after certification |
 | Certificate cost | £0 unsigned; roughly $10 a month or £200–400 a year signed | **£0** |
-| Updates | People download the new installer | The Store updates it automatically |
+| Updates | *Settings → Updates*: signed in-app updates (from 0.5.0), or the new installer by hand | The Store updates it automatically; the in-app updater is switched off |
 | Where the library lives | `%LOCALAPPDATA%\CaseKeeper` | `%USERPROFILE%\CaseKeeper` |
 | Settings and logs | `%APPDATA%\CaseKeeper`, `%LOCALAPPDATA%\CaseKeeper\Logs` | The package's own folder (Windows removes it on uninstall) |
 | Removing the library | The uninstaller asks (default: keep) | *Settings → Factory reset → Remove all CaseKeeper data* |
@@ -39,7 +39,7 @@ The Store copy is the same program as the website copy, packaged differently. Th
    CaseKeeper 0.4.0 used the `unvirtualizedResources` restricted capability to share
    `%LOCALAPPDATA%\CaseKeeper` with the website copy. Microsoft declined it (policy 10.6.3): it's
    meant for games and similar, and could stop an uninstall cleaning up. 0.4.1 removed it, and
-   0.4.2 is the version resubmitted.
+   0.4.2 was the version resubmitted.
 2. **Moving from the website copy.** The first time the Store copy opens on a PC with a website
    library and no Store library, it offers to copy it across. Every file is checked by SHA-256
    after copying, nothing is ever overwritten, and the original isn't changed, so the website copy
@@ -244,6 +244,8 @@ submission, delete it: that capability is no longer in the package.
 > %USERPROFILE%\CaseKeeper. To test: Documents → Add documents, choose any PDF or image. The AI
 > features are optional and need a local Ollama server (https://ollama.com); without one the app
 > says the AI is unavailable and everything else works. The app sends no data over the internet.
+> Its Settings → Updates section is switched off in the Store version (updates come only from the
+> Store), so it never downloads or runs code from anywhere else.
 >
 > This version no longer uses the unvirtualizedResources capability. The user's library is kept in
 > %USERPROFILE%\CaseKeeper so that uninstalling never destroys their legal evidence. Users are told
@@ -262,8 +264,11 @@ days. Partner Center e-mails you the result, and a rejection report says exactly
 3. In Partner Center: **Update** the submission, replace the package, update *What's new*, submit.
 
 Each Store upload needs a version higher than the last one. The fourth part of the version is
-always `0`, as the Store requires. The Store updates installed copies automatically. CaseKeeper has
-no updater of its own, so nothing conflicts.
+always `0`, as the Store requires. The Store updates installed copies automatically. The in-app
+updater (*Settings → Updates*, from 0.5.0) is for the website version only: in a Store copy it is
+switched off in code (it checks for a package identity), never contacts the internet, and only says
+that the Store delivers updates. So nothing conflicts, and the package never downloads or runs code
+from outside the Store, as Store policy requires.
 
 ## Signing the website installer
 

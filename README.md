@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.2-3dd6c8" alt="Version 0.4.2">
+  <img src="https://img.shields.io/badge/version-0.5.0-3dd6c8" alt="Version 0.5.0">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b7a75" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-3dd6c8" alt="MIT licence"></a>
@@ -27,7 +27,7 @@ a built-in guide to the family courts, and optional AI analysis that runs on you
 
 **Everything stays on your own computer.** Documents are copied into a local library, text recognition uses the
 engine built into Windows, and nothing is uploaded anywhere. The optional AI only talks to an Ollama server you
-choose – normally your own PC.
+choose – normally your own PC. *Check for updates* only downloads, and only when you ask.
 
 > CaseKeeper is an organising tool. It does not give legal advice, and nothing it produces replaces advice from a
 > solicitor, barrister or advice service.
@@ -52,7 +52,7 @@ Both use the same library, so you can switch between them without losing anythin
 **Check your download.** Each release lists SHA-256 checksums in `SHA256SUMS.txt`. In PowerShell:
 
 ```powershell
-Get-FileHash .\CaseKeeper-Setup-v0.4.2.exe -Algorithm SHA256
+Get-FileHash .\CaseKeeper-Setup-v0.5.0.exe -Algorithm SHA256
 ```
 
 The result should match the line for that file exactly. If it doesn't, don't run it.
@@ -61,8 +61,10 @@ The result should match the line for that file exactly. If it doesn't, don't run
 program, plus whatever your documents take. Optional: [Ollama](https://ollama.com) for the AI tools; Microsoft Word
 or LibreOffice to keep Word-template designs in PDF exports.
 
-To upgrade, run the newer installer – it replaces the old version in place and **your documents, notes and
-settings are left exactly as they were**.
+To upgrade, use *Settings → Updates → Check for updates* (from 0.5.0), or run the newer installer. Either way the
+old version is replaced in place and **your documents, notes and settings are left exactly as they were**. In-app
+updates are signed twice – ECDSA P-256 and post-quantum ML-DSA-65 – and CaseKeeper installs nothing those
+signatures don't vouch for.
 
 ## What it does
 
@@ -110,6 +112,8 @@ settings are left exactly as they were**.
 - **Optional password protection** – AES-256 for the database, documents, snapshots and saved exports – with
   auto-lock, lock-with-Windows and a one-click **Maximum security** mode.
 - **Daily snapshots**, integrity checks, full **backups** (optionally encrypted) and a settings & templates file.
+- **Signed in-app updates** (website version): check, verified download, backup prompt, install, and a check
+  afterwards that the new version is running. Optional weekly or daily checks, off by default.
 - Light and dark themes in the DarkCipher Systems style.
 
 See the full **[user guide](USER-GUIDE.md)**.
@@ -166,6 +170,7 @@ Tests (see [tests/README.md](tests/README.md)):
 dotnet run --project tests\CaseKeeper.Tests.Docs -- "$env:TEMP\ck-test-output"
 dotnet run --project tests\CaseKeeper.Tests.Data
 dotnet run --project tests\CaseKeeper.Tests.BulkImport
+dotnet run --project tests\CaseKeeper.Tests.Updates
 ```
 
 To build a release installer, see [RELEASING.md](RELEASING.md).
@@ -180,7 +185,7 @@ To build a release installer, see [RELEASING.md](RELEASING.md).
   answers, the per-document analyser, cross-document checks, the resumable job runner and approvals (see
   [docs/BULK-IMPORT.md](docs/BULK-IMPORT.md))
 - `Services/` – library, vault (AES-256-GCM), backup, OCR, PDF rendering, logging, performance profiles, session lock,
-  deadlines, settings transfer, the Ollama client (`Ai/`), the guide content (`Guide/`) and the document engine
+  deadlines, settings transfer, the signed updater (`Updater.cs`, `Pqc.cs`), the Ollama client (`Ai/`), the guide content (`Guide/`) and the document engine
   (`Documents/` – one model rendered to Word via OpenXML, PDF via PDFsharp, HTML and on-screen preview)
 - `Views/` – WPF windows; `Views/Modules/` the case screens; `Views/Forms/` the shared record list and form
 - `Themes/` – light and dark palettes · `installer/` – the Inno Setup script · `packaging/store/` – the

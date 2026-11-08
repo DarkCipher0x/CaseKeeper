@@ -55,14 +55,15 @@ and the first push opens a sign-in window once.
    | Step | What happens |
    |---|---|
    | Checks | The version must be new: a built or published version is never overwritten. The changelog section must exist. |
-   | Tests | The three test programs run; any failure stops the release. |
+   | Tests | The four test programs run; any failure stops the release. |
    | Installer | `dotnet publish` (self-contained .NET), then Inno Setup. |
    | Store package | `build-store.ps1` builds the `.msix` from the same build. |
    | Source | `tools\write-public-source.ps1` privacy-scans the source, `tools\publish-public.ps1 -NoPush` commits and tags it in `..\CaseKeeper-public` (not pushed yet), and the source zip is `git archive` of that tag. |
-   | Local copy | Everything is kept in **`dist\<version>\`**: the installer, source zip, `.msix`, `CHANGELOG.md`, `USER-GUIDE.md`, `STORE.md` and `SHA256SUMS.txt`. |
+   | Update information | `update.json` (version, release notes from the changelog, the setup program's size and SHA-256) is signed with both release keys by `tools\sign-update.ps1`, then checked the way installed copies will check it, with the app's own code (`tests\CaseKeeper.Tests.Updates --verify`). See [Signed updates](#signed-updates). |
+   | Local copy | Everything is kept in **`dist\<version>\`**: the installer, source zip, `.msix`, `update.json` with `update.json.sig` and `update.json.pq.sig`, `CHANGELOG.md`, `USER-GUIDE.md`, `STORE.md` and `SHA256SUMS.txt`. |
    | Private repo | This repository is committed as `Release v<version>` and tagged locally. |
    | GitHub source | `tools\publish-public.ps1` pushes that commit and tag `v<version>`. |
-   | GitHub release | `tools\publish-github-release.ps1` creates *CaseKeeper v&lt;version&gt;* with the changelog notes, attaches the installer, source zip and `SHA256SUMS.txt`, and checks GitHub's own SHA-256 of each upload. |
+   | GitHub release | `tools\publish-github-release.ps1` creates *CaseKeeper v&lt;version&gt;* with the changelog notes, attaches the installer, source zip, `update.json` and its two signatures and `SHA256SUMS.txt`, and checks GitHub's own SHA-256 of each upload. |
 
    Useful switches:
 
@@ -77,9 +78,60 @@ and the first push opens a sign-in window once.
    `dist\<version>\CaseKeeper-Setup-v<version>.exe` over the previous version, check your documents
    are still there, then run `build-release.ps1 -PublishOnly`.
 
-4. **By hand afterwards:** put the installer, source zip and SHA-256s on the website, and upload
-   the `.msix` in Partner Center as a new Store submission (see [docs/STORE.md](docs/STORE.md)).
-   The script prints this reminder at the end.
+4. **By hand afterwards:** put the installer, source zip and SHA-256s on the website, with the
+   installer, `update.json`, `update.json.sig` and `update.json.pq.sig` together in
+   `/downloads/casekeeper/` (where installed copies look), and upload the `.msix` in Partner Center
+   as a new Store submission (see [docs/STORE.md](docs/STORE.md)). The script prints this reminder
+   at the end.
+
+## Signed updates
+
+From 0.5.0 the website version updates itself (*Settings → Updates*), the same way as DarkCipher
+ServerManagement. Installed copies trust only the two public keys pinned in
+`CaseKeeper\Services\Updater.cs` (`ReleaseKeyX` / `ReleaseKeyY` for ECDSA P-256, `ReleasePqKey` for
+ML-DSA-65). Both were created once, on 8 November 2026.
+
+- **The private keys** are two files in `%LOCALAPPDATA%\DarkCipher\keys\`, encrypted by Windows (DPAPI)
+  for the release account. They are never in a repository, a build or a backup of the library.
+  `build-release.ps1` signs with them through `tools\sign-update.ps1`, which refuses to sign if they
+  aren't the pinned keys.
+- **Never replace them.** Every installed copy trusts only these keys; new keys would mean those copies
+  can only be updated by hand.
+- **Escrow them once**, and again only if they're restored somewhere new:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tools\sign-update.ps1 -Escrow E:\casekeeper-update-keys.json
+  ```
+
+  It asks for a password of at least 16 characters and writes both keys encrypted with it
+  (PBKDF2-HMAC-SHA256, 600,000 iterations, AES-256 with an HMAC-SHA256 check). Keep the file offline,
+  on removable media, and the password somewhere else. Not in cloud storage, and never in a repository.
+- **On a new PC or Windows account**, put them back with
+  `tools\sign-update.ps1 -RestoreEscrow <file>`. It refuses unless the keys match the ones pinned in
+  `Updater.cs`.
+- `tools\sign-update.ps1 -ShowPublicKey` prints the public keys; `-Verify <update.json>` checks a signed
+  file without any private key.
+- The CI build has no keys, so it writes no `update.json`. Only the local release of record is signed.
+
+`update.json` looks like this (the signatures cover its exact bytes, so never edit it after signing):
+
+```json
+{
+  "product": "DarkCipher CaseKeeper",
+  "version": "0.5.0",
+  "label": "CaseKeeper 0.5.0",
+  "released": "2026-11-08",
+  "notes": "…the changelog section, as plain text…",
+  "schemaChange": false,
+  "signed": true,
+  "packages": [ { "kind": "setup", "arch": "x64", "file": "CaseKeeper-Setup-v0.5.0.exe",
+                  "url": "CaseKeeper-Setup-v0.5.0.exe", "bytes": 0, "sha256": "…" } ]
+}
+```
+
+Set `schemaChange` to `true` by hand in `build-release.ps1` for a release that changes how the library is
+stored: the Updates card then recommends a backup more strongly.
+
 ## The GitHub repository
 
 There are two git repositories, and only one of them ever goes online:

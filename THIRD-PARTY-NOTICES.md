@@ -11,7 +11,8 @@ CaseKeeper is built with these components. Each one keeps its own licence.
 | [SQLCipher](https://github.com/sqlcipher/sqlcipher) (community edition, bundled by SQLitePCLRaw) | BSD-style (Zetetic LLC) | Encrypting the database |
 | [PDFsharp](https://github.com/empira/PDFsharp) (PDFsharp-WPF) 6.2.4 | MIT | PDF output: bundles, letters and reports |
 | [SharpZipLib](https://github.com/icsharpcode/SharpZipLib) 1.4.2 | MIT | Backups and archives |
-| Windows DPAPI (System.Security.Cryptography.ProtectedData, part of the .NET runtime) | MIT | Protecting the stored AI API key |
+| [BouncyCastle.Cryptography](https://github.com/bcgit/bc-csharp) 2.7.0 | MIT | Checking the post-quantum (ML-DSA-65) signature on updates |
+| Windows DPAPI (System.Security.Cryptography.ProtectedData, part of the .NET runtime) | MIT | Protecting the stored AI API key and the optional GitHub update token |
 
 Optional, not bundled: [Ollama](https://ollama.com) (MIT) for the local AI features, if you install it yourself.
 

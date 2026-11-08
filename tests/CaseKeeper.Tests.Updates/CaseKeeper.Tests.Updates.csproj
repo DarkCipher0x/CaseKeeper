@@ -1,0 +1,27 @@
+<!-- Checks the signed in-app updater (Settings → Updates) without the internet: both signatures (ECDSA P-256 and
+     ML-DSA-65) with throwaway test keys, strict parsing of the update information, every source (website or own
+     address, public GitHub release, private GitHub release through the API with a token) against a scripted stand-in
+     server, redirects, size caps, the download checks, the check just before the setup program runs, what a request
+     carries, the saved settings (the token encrypted), and the check after an update. Nothing is installed or run.
+     How to run: see tests/README.md. Exit code 0 means everything passed. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- The Windows Desktop runtime carries ProtectedData (DPAPI), as it does for the app -->
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <IsPackable>false</IsPackable>
+    <Src>$(MSBuildThisFileDirectory)..\..\CaseKeeper\</Src>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <Compile Include="$(Src)Services\Updater.cs" />
+    <Compile Include="$(Src)Services\Pqc.cs" />
+    <Compile Include="$(Src)Services\AppPaths.cs" />
+    <Compile Include="$(Src)Services\AppPackage.cs" />
+  </ItemGroup>
+</Project>

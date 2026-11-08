@@ -32,6 +32,7 @@ computer: documents, hearings and orders, deadlines, a contact log, costs, lette
 22. [Keyboard shortcuts](#22-keyboard-shortcuts)
 23. [Troubleshooting](#23-troubleshooting)
 24. [Where your data is kept, and removing it](#24-where-your-data-is-kept-and-removing-it)
+25. [Updating CaseKeeper](#25-updating-casekeeper)
 
 ---
 
@@ -48,7 +49,8 @@ The first time you open CaseKeeper, a short **Welcome** asks:
 The dashboard then shows a **Getting started** checklist. Each item is a link that takes you straight to it.
 
 If you're upgrading from an earlier version, nothing is changed: your documents and notes are exactly as they
-were, and CaseKeeper starts in Simple mode with a note about what's new.
+were, and CaseKeeper starts in Simple mode with a note about what's new. From version 0.5.0 the website version can
+update itself: see [Updating CaseKeeper](#25-updating-casekeeper).
 
 ## 2. Finding your way around
 
@@ -471,7 +473,9 @@ copies your set-up (no personal or case information) for a support request.
 
 ## 19. Security and privacy
 
-- **Nothing is uploaded.** The only network use is the optional AI, and only to the server you choose.
+- **Nothing is uploaded.** CaseKeeper only uses the network for the optional AI, and only to the server you choose,
+  and for *Check for updates* (website version), which only downloads, and only when you click it or switch on
+  automatic checks. See [Updating CaseKeeper](#25-updating-casekeeper).
 - **Password protection** (*Settings → Password protection*) encrypts the database, every document, the daily
   snapshots and anything saved into the Exports folder, with AES-256. CaseKeeper asks for the password when it opens.
   **There is no recovery if the password is lost** – keep it safe, and keep backups.
@@ -557,6 +561,9 @@ copies your set-up (no personal or case information) for a support request.
 | The library can't be reached at start-up | Connect the drive or NAS, then *Try again* – or choose another folder. |
 | "The folder's location is too long" | Choose a folder closer to the top of the drive, e.g. `C:\CaseKeeper`. |
 | Something looks wrong after a change | *Settings → Safety & recovery → Restore* a snapshot, or import a backup. |
+| *Check for updates*: "Couldn't reach the update server" | Check you're online, then try again. Nothing was changed. If you use your own update address, check it in *Settings → Updates*. |
+| *Check for updates*: "…signature doesn't match…" or "…no signature…" | The update information wasn't signed by CaseKeeper's release keys, so nothing is offered. That is the protection working: don't install anything from that source by hand. Try again later, or download from darkciphersystems.com and check the SHA-256. |
+| An update "didn't complete" | The setup program was closed or Windows permission wasn't given. Your library is unchanged. Run *Check for updates* again, or download the installer from the website. |
 | CaseKeeper won't open a document and shows it in File Explorer instead | It's a type of file Windows would run as a program (for example `.exe`, `.js`, `.lnk`), so CaseKeeper won't start it. Check where it came from before opening it yourself. |
 
 ## 24. Where your data is kept, and removing it
@@ -565,7 +572,7 @@ Your case library is an ordinary folder on your PC:
 
 | Installed from | Library | Settings and logs |
 |---|---|---|
-| The website installer | `%LOCALAPPDATA%\CaseKeeper` | `%APPDATA%\CaseKeeper` and `%LOCALAPPDATA%\CaseKeeper\Logs` |
+| The website installer | `%LOCALAPPDATA%\CaseKeeper` | `%APPDATA%\CaseKeeper` and `%LOCALAPPDATA%\CaseKeeper\Logs` (a downloaded update waits in `%TEMP%\CaseKeeper-Update` until it's installed) |
 | The Microsoft Store | `%USERPROFILE%\CaseKeeper` (a CaseKeeper folder inside your own user folder) | CaseKeeper's own app folder, which Windows manages |
 
 If you moved the library or keep other cases, *Settings → Your library* and *Settings → Settings, templates and other
@@ -591,3 +598,52 @@ Backups you saved elsewhere, and the original files you imported from, are never
 **Moving from the website version to the Store version:** the first time the Store version opens, it offers to copy
 the website version's library across. The original is left as it was. You can also bring a library across with a
 backup (*Settings → Backup & transfer*).
+
+## 25. Updating CaseKeeper
+
+**Microsoft Store version:** the Store keeps it up to date. To update straight away, open the Microsoft Store →
+*Library* → *Get updates*. *Settings → Updates* just says so.
+
+**Website version:** *Settings → Updates*.
+
+1. Click **Check for updates**. CaseKeeper downloads a small file (`update.json`) that says which version is newest,
+   with two signatures, and tells you whether there's something newer than the version you have.
+2. If there is, you see **What's new** and the setup program's name, size and SHA-256. Click **Download and
+   verify**. It downloads into a private temporary folder and must match the signed size and SHA-256 exactly, be a
+   Windows program, and say it is CaseKeeper by DarkCipher Systems at exactly that version. Anything else is
+   deleted and nothing is offered.
+3. Click **Install… (backup first)**. CaseKeeper checks the file again, offers to make a backup (recommended; a
+   release that changes how the library is stored says so), takes a safety snapshot of the database, closes, and
+   starts the normal setup wizard. Windows may ask for permission. Your library, settings and password protection
+   aren't touched.
+4. When CaseKeeper opens again it tells you whether the update worked ("Update verified: CaseKeeper 0.5.1 is now
+   running") or didn't. Both are recorded in the audit trail.
+
+**Why you can trust it.** An update is only offered when its information is signed by **both** CaseKeeper release
+keys built into your copy: a classical ECDSA P-256 key and a post-quantum ML-DSA-65 key. The private keys never
+leave the release PC, so the website, GitHub or anything in between only carries the files: if any of it were
+changed or hijacked, the signatures wouldn't match and CaseKeeper would offer nothing. An older version is never
+offered as new, so an old release can't be passed off as an update.
+
+**What a check sends.** A plain download request with a generic name (`DarkCipher-Updater`): no cookies, no
+identifiers, nothing about you, this PC or your case. CaseKeeper only checks when you click, or on the schedule
+below.
+
+**Where it looks** (*Updates from*):
+
+| Choice | What it uses |
+|---|---|
+| The DarkCipher Systems website (recommended) | `darkciphersystems.com/downloads/casekeeper/` |
+| GitHub releases | The latest release of `DarkCipher0x/CaseKeeper` on GitHub. While that repository is private, add a
+  fine-grained access token with read-only *Contents* access to it alone: it is encrypted with your Windows account,
+  never put in a backup, and sent only to `api.github.com`. |
+| An https address of my own | The full address of an `update.json` you host, for example a mirror. The setup
+  program must be in the same folder. The same signatures are required. |
+
+**Automatic checks** are off until you tick **Check for updates automatically**. Then CaseKeeper checks once a week
+(or once a day, under *How often*), about 20 seconds after it starts, and shows a notice at the bottom right with
+a *Review* button. Tick **Also download and verify a new version in the background** to have it ready to install;
+installing always asks you first.
+
+You can always update by hand instead: download the newest installer from the website, check its SHA-256 against
+`SHA256SUMS.txt`, and run it over the old version.

@@ -45,7 +45,7 @@ public partial class MainWindow
         foreach (var (label, key) in new[]
                  {
                      ("Layout", "layout"), ("Security", "security"), ("Password", "password"), ("Library", "library"), ("Backup", "backup"),
-                     ("Recovery", "recovery"), ("AI", "ai"), ("Performance", "performance"), ("Logs", "logs"), ("Transfer", "transfer"),
+                     ("Recovery", "recovery"), ("AI", "ai"), ("Performance", "performance"), ("Logs", "logs"), ("Updates", "updates"), ("Transfer", "transfer"),
                      ("Categories", "categories"), ("About", "about")
                  })
         {
@@ -67,6 +67,7 @@ public partial class MainWindow
         Insert(Section("ai", "AI (Ollama)", AiCard()));
         Insert(Section("performance", "Performance", PerformanceCard()));
         Insert(Section("logs", "Logs & diagnostics", LogsCard()));
+        Insert(Section("updates", "Updates", UpdatesCard()));
 
         RefreshSnapshots();
         RefreshRecentErrors();

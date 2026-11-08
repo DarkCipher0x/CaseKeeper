@@ -6,7 +6,8 @@ namespace CaseKeeper.Services;
 
 /// <summary>
 /// Removes everything CaseKeeper has stored on this PC: the libraries it knows about, the files
-/// that remember where they are, the logs, and any decrypted copies left for other programs.
+/// that remember where they are (and the update settings), the logs, any decrypted copies left for other
+/// programs, and a downloaded update that hasn't been installed.
 ///
 /// Used in two places:
 ///   • Settings → Factory reset → "Remove all CaseKeeper data from this PC…"
@@ -64,7 +65,7 @@ public static class DataRemoval
             if (LooksLikeLibrary(full)) plan.Libraries.Add(full);
         }
 
-        foreach (var folder in new[] { AppPaths.SettingsFolder, AppPaths.LogsFolder, LibraryService.TempCopiesFolder })
+        foreach (var folder in new[] { AppPaths.SettingsFolder, AppPaths.LogsFolder, LibraryService.TempCopiesFolder, AppPaths.UpdateWorkFolder })
             if (Directory.Exists(folder) && !plan.OtherFolders.Contains(folder, StringComparer.OrdinalIgnoreCase))
                 plan.OtherFolders.Add(folder);
         return plan;

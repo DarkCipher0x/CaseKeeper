@@ -48,3 +48,9 @@ jobs:
         run: |
           dotnet run --project tests/CaseKeeper.Tests.BulkImport
           if ($LASTEXITCODE -ne 0) { throw "Bulk Case Import tests failed" }
+
+      - name: Signed update tests
+        shell: pwsh
+        run: |
+          dotnet run --project tests/CaseKeeper.Tests.Updates
+          if ($LASTEXITCODE -ne 0) { throw "Signed update tests failed" }

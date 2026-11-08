@@ -50,6 +50,8 @@ public partial class MainWindow : Window
         // Resume any text scanning that didn't finish last time
         EnqueueOcr(_docs.Where(d => d.OcrStatus is OcrStatus.Pending or OcrStatus.Running));
         Dispatcher.BeginInvoke(FirstRunIfNeeded, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        // An update started last time is reported once the running version proves it; then the opt-in automatic check
+        UpdatesAtStartup();
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)

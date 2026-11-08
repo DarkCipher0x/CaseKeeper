@@ -1,4 +1,4 @@
-<#
+﻿<#
     Builds and publishes a CaseKeeper release, start to finish, in one command.
 
     To cut a new version (or a point release):
@@ -8,16 +8,19 @@
 
     What it does, stopping at the first problem:
       1. Checks the version is new (never overwrites a release) and has a changelog section
-      2. Runs the three test programs
+      2. Runs the four test programs
       3. Publishes the app (self-contained .NET) and builds the installer with Inno Setup
       4. Builds the Microsoft Store package (.msix) from the same build      (build-store.ps1)
       5. Privacy-scans the source (tools\write-public-source.ps1), commits and tags it in the public clone without
          pushing (tools\publish-public.ps1 -NoPush), and writes the source zip as git archive of that tag
-      6. Keeps the full package in dist\<version>\ with SHA256SUMS.txt:
+      6. Writes the signed update information for the in-app updater: update.json, signed with both release
+         keys into update.json.sig and update.json.pq.sig (tools\sign-update.ps1), then checked the way an installed
+         copy will check it, with the app's own code (tests\CaseKeeper.Tests.Updates --verify)
+         Keeps the full package in dist\<version>\ with SHA256SUMS.txt:
            CaseKeeper-Setup-v<ver>.exe, CaseKeeper-src-v<ver>.zip, CaseKeeper-v<ver>-x64.msix,
-           CHANGELOG.md, USER-GUIDE.md, STORE.md
+           update.json, update.json.sig, update.json.pq.sig, CHANGELOG.md, USER-GUIDE.md, STORE.md
       7. Pushes that tag to GitHub                                           (tools\publish-public.ps1)
-      8. Creates the GitHub release and attaches the installer, source zip and checksums
+      8. Creates the GitHub release and attaches the installer, source zip, signed update information and checksums
                                                                              (tools\publish-github-release.ps1)
 
     Options:
@@ -91,7 +94,8 @@ if (-not $SkipTests) {
     $tests = @(
         @{ Name = 'Document engine'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Docs'), '--', $testOut) },
         @{ Name = 'Data layer'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Data')) },
-        @{ Name = 'Bulk Case Import'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.BulkImport')) }
+        @{ Name = 'Bulk Case Import'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.BulkImport')) },
+        @{ Name = 'Signed updates'; Args = @('run', '--project', (Join-Path $root 'tests\CaseKeeper.Tests.Updates')) }
     )
     foreach ($t in $tests) {
         $log = & dotnet @($t.Args)
@@ -158,7 +162,45 @@ else {
     Write-Host "  $srcName.zip = git archive of the public tag v$version"
 }
 
-# --- 6. the local package --------------------------------------------------------------
+# --- 6. the signed update information (Settings -> Updates in installed copies) ---------------
+# update.json says which version this is and gives the setup program's exact size and SHA-256. Installed copies believe
+# it only when both signatures verify against the release keys pinned in CaseKeeper\Services\Updater.cs. The private
+# keys are this Windows account's (tools\sign-update.ps1); without them the build stops rather than ship unsigned.
+if ($onCi) {
+    Write-Host '  CI: update.json is not written (the release keys are only on the release PC)' -ForegroundColor Yellow
+}
+else {
+    Step 'Signing the update information'
+    $section = [regex]::Match([IO.File]::ReadAllText($changelog), "(?ms)^## v$([regex]::Escape($version))\b[^\n]*\n(.*?)(?=^---|^## v|\z)").Groups[1].Value
+    # Plain text for the Updates card: headings become lines of their own, Markdown emphasis and code marks go
+    $notes = ($section -replace '\r', '' -replace '(?m)^#{2,6}\s*(.+)$', '$1:' -replace '\*\*|__|`', '' -replace '(?<!\w)\*(?!\s)|(?<!\s)\*(?!\w)', '').Trim()
+    $notes = $notes -replace '\n{3,}', "`n`n"
+    if ($notes.Length -gt 7900) { $notes = $notes.Substring(0, 7900).TrimEnd() + "`n`nThe full notes are in CHANGELOG.md." }
+    $setupFile = Get-Item (Join-Path $out $setupName)
+    $manifest = [ordered]@{
+        product      = 'DarkCipher CaseKeeper'
+        version      = $version
+        label        = "CaseKeeper $version"
+        released     = (Get-Date).ToString('yyyy-MM-dd')
+        notes        = $notes
+        schemaChange = $false
+        signed       = $true
+        packages     = @([ordered]@{
+            kind   = 'setup'; arch = 'x64'; file = $setupName; url = $setupName
+            bytes  = [long]$setupFile.Length
+            sha256 = (Get-FileHash $setupFile.FullName -Algorithm SHA256).Hash.ToLower()
+        })
+    }
+    $updateJson = Join-Path $out 'update.json'
+    [IO.File]::WriteAllText($updateJson, (($manifest | ConvertTo-Json -Depth 5) -replace "`r`n", "`n") + "`n", (New-Object Text.UTF8Encoding $false))
+    & (Join-Path $root 'tools\sign-update.ps1') -Path $updateJson
+    $check = & dotnet run --project (Join-Path $root 'tests\CaseKeeper.Tests.Updates') -- --verify $updateJson
+    $code = $LASTEXITCODE
+    $check | Where-Object { $_ -match '^(PASS|FAIL) ' } | ForEach-Object { Write-Host "  $_" -ForegroundColor $(if ($_ -like 'FAIL*') { 'Red' } else { 'Gray' }) }
+    if ($code -ne 0) { throw "The signed update information doesn't pass the app's own checks ($code failure(s)); nothing was published" }
+}
+
+# --- 7. the local package --------------------------------------------------------------
 Copy-Item $changelog, (Join-Path $root 'USER-GUIDE.md'), (Join-Path $root 'docs\STORE.md') $out
 Get-ChildItem $out -File | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object Name |
     ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
@@ -178,7 +220,7 @@ if (-not $onCi -and (Test-Path (Join-Path $root '.git'))) {
     Write-Host "Private repository: committed and tagged v$version (local only)"
 }
 
-# --- 7-8. GitHub ------------------------------------------------------------------------
+# --- 8-9. GitHub ------------------------------------------------------------------------
 if ($NoPublish -or $onCi) {
     Write-Host ''
     Write-Host "Not published to GitHub. When ready:  .\build-release.ps1 -PublishOnly" -ForegroundColor Yellow
@@ -189,7 +231,8 @@ else {
 
 Write-Host ''
 Write-Host 'Still to do by hand:' -ForegroundColor Cyan
-Write-Host "  - put the installer, source zip and SHA-256s from dist\$version\ on the website"
+Write-Host "  - put the installer, update.json with its two .sig files, the source zip and SHA-256s from dist\$version\ on the website"
+Write-Host "    (installer and update.json files in /downloads/casekeeper/ - the in-app updater reads them there)"
 if (Get-ChildItem $out -Filter '*.msix' -ErrorAction SilentlyContinue) {
     Write-Host '  - upload the .msix in Partner Center (a new Store submission; see docs\STORE.md)'
 }

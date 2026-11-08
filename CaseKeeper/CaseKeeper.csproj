@@ -14,10 +14,10 @@
 
     <!-- The single place the version is set. The installer script reads it from the built exe,
          so bumping this number here is all that's needed for a new release. -->
-    <Version>0.4.2</Version>
-    <AssemblyVersion>0.4.2.0</AssemblyVersion>
-    <FileVersion>0.4.2.0</FileVersion>
-    <InformationalVersion>0.4.2</InformationalVersion>
+    <Version>0.5.0</Version>
+    <AssemblyVersion>0.5.0.0</AssemblyVersion>
+    <FileVersion>0.5.0.0</FileVersion>
+    <InformationalVersion>0.5.0</InformationalVersion>
     <!-- Publisher brand only. No personal names, e-mail addresses or machine details anywhere in the build. -->
     <Company>DarkCipher Systems</Company>
     <Authors>DarkCipher Systems</Authors>
@@ -53,6 +53,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ML-DSA-65 (post-quantum) verification of signed updates, the same as DarkCipher ServerManagement. MIT licence. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.14" />
     <!-- 6.2.x is the last MIT release: PDFsharp 6.5 moved to AGPL-3.0 with a licence key, which CaseKeeper's

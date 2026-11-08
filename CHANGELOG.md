@@ -14,6 +14,45 @@ folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\Cas
 
 ---
 
+## v0.5.0 — 8 November 2026
+
+CaseKeeper can now update itself. Upgrade over any earlier version: nothing you already have is changed.
+
+### Added
+- **Signed in-app updates** (website version): *Settings → Updates → Check for updates* shows whether a newer
+  version is available and what's new, then **Download and verify** and **Install… (backup first)**. Installing
+  offers a backup, takes a safety snapshot, closes CaseKeeper and runs the normal setup wizard; when CaseKeeper
+  opens again it says whether the update worked. Your library, settings and password protection are not touched.
+- **Two signatures on every update.** An update is offered only when its information is signed by both CaseKeeper
+  release keys built into the app: ECDSA P-256 and the post-quantum ML-DSA-65. The website and GitHub only carry the
+  files, so nothing changed there can get through. Older versions are never offered as new, and the setup program
+  must match the signed size and SHA-256 exactly and say it is CaseKeeper by DarkCipher Systems at that version.
+  It is checked again just before it runs.
+- **Where to look:** the DarkCipher Systems website (the default), GitHub releases (with an optional read-only access
+  token while the repository is private, encrypted with your Windows account), or an https address of your own.
+- **Optional automatic checks,** off until you switch them on: once a week or once a day, shortly after CaseKeeper
+  starts, with a notice at the bottom right. It can also download and verify the update in the background.
+  Installing always asks you first.
+- A check is a plain download with a generic name: no cookies, no identifiers and nothing about you, this PC or your
+  case. The Microsoft Store version is updated by the Store as before, and its Updates section says so.
+- New Guide & FAQ article *Updating CaseKeeper*, a help-assistant answer, and user guide section 25.
+
+### Fixes
+- GitHub release notes showed garbled characters (such as "â†’" for "→"), because the release script was read in
+  the wrong text encoding. The release scripts are now saved so Windows PowerShell reads them correctly.
+- "Remove all CaseKeeper data" also removes a downloaded update that hasn't been installed.
+
+### Components
+- Added BouncyCastle.Cryptography 2.7.0 (MIT) to check the post-quantum signature. No known vulnerabilities.
+
+### For developers
+- `tools\sign-update.ps1` creates, escrows, restores and uses the two release keys; `build-release.ps1` writes and
+  signs `update.json`, then checks it with the app's own code before anything is published. GitHub releases now
+  carry `update.json`, `update.json.sig` and `update.json.pq.sig`, and `SHA256SUMS.txt` covers them. A fourth test
+  program, `tests\CaseKeeper.Tests.Updates`, runs in the release build and CI. See RELEASING.md → Signed updates.
+
+---
+
 ## v0.4.2 — 30 October 2026
 
 Runtime and component updates, with everything from 0.4.1. Version 0.4.1 never reached the website or the Microsoft

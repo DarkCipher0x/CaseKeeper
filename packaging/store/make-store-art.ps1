@@ -1,4 +1,4 @@
-<#
+﻿<#
     Draws the optional Microsoft Store listing images from the app icon (assets\casekeeper-icon.png).
 
       powershell -ExecutionPolicy Bypass -File packaging\store\make-store-art.ps1
