@@ -14,6 +14,26 @@ folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\Cas
 
 ---
 
+## v0.6.2 — 8 November 2026
+
+A maintenance release with a correction to the patch notes. Upgrade over any earlier version: nothing you already
+have is changed. From 0.5.0, *Settings → Updates* can install it for you.
+
+### Fixes
+- The 0.6.1 patch notes showed a stray invisible character in place of `\a` in one line (`CaseKeeper\app.manifest`).
+  The notes are corrected here, in the app and in the update information. Nothing else changes: 0.6.2 is 0.6.1
+  with corrected notes, including the sharper display on high-resolution and mixed-scaling monitors.
+
+### Components
+- No changes. .NET 10.0.14, the latest security release. No known vulnerabilities in any package.
+
+### For developers
+- `build-release.ps1` now refuses to build if `CHANGELOG.md`, `USER-GUIDE.md`, `README.md` or `docs\STORE.md`
+  contain a control character other than tab, CR or LF. These files ship inside the exe and msix and become the
+  signed release notes.
+
+---
+
 ## v0.6.1 — 8 November 2026
 
 A maintenance release. Upgrade over any earlier version: nothing you already have is changed. From 0.5.0,
@@ -29,7 +49,7 @@ A maintenance release. Upgrade over any earlier version: nothing you already hav
 - No changes. .NET 10.0.14, the latest security release. No known vulnerabilities in any package.
 
 ### For developers
-- `CaseKeeperpp.manifest` is now embedded in the exe: per-monitor DPI awareness (v2), `asInvoker`, Windows 10/11.
+- `CaseKeeper\app.manifest` is now embedded in the exe: per-monitor DPI awareness (v2), `asInvoker`, Windows 10/11.
   This clears the Windows App Certification Kit's High-DPI warning for the Store package.
 
 ---

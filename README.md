@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.6.1-3dd6c8" alt="Version 0.6.1">
+  <img src="https://img.shields.io/badge/version-0.6.2-3dd6c8" alt="Version 0.6.2">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b7a75" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-3dd6c8" alt="MIT licence"></a>
@@ -55,7 +55,7 @@ Both use the same library, so you can switch between them without losing anythin
 **Check your download.** Each release lists SHA-256 checksums in `SHA256SUMS.txt`. In PowerShell:
 
 ```powershell
-Get-FileHash .\CaseKeeper-Setup-v0.6.1.exe -Algorithm SHA256
+Get-FileHash .\CaseKeeper-Setup-v0.6.2.exe -Algorithm SHA256
 ```
 
 The result should match the line for that file exactly. If it doesn't, don't run it.

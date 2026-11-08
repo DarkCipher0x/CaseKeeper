@@ -86,6 +86,12 @@ $changelog = Join-Path $root 'CHANGELOG.md'
 if (-not (Select-String -Path $changelog -Pattern "^## v$([regex]::Escape($version))\b" -Quiet)) {
     throw "CHANGELOG.md has no '## v$version' section. Add the patch notes first: they become the release notes."
 }
+# The docs ship inside the exe and msix and become the signed release notes, so refuse stray control characters
+# (for example a BEL left by a mistyped backslash-a escape). Tab, CR and LF are fine.
+foreach ($doc in @($changelog, (Join-Path $root 'USER-GUIDE.md'), (Join-Path $root 'README.md'), (Join-Path $root 'docs\STORE.md'))) {
+    $bad = [regex]::Matches([IO.File]::ReadAllText($doc), '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]')
+    if ($bad.Count) { throw "$(Split-Path -Leaf $doc) contains $($bad.Count) control character(s), the first U+$(([int][char]$bad[0].Value).ToString('X4')) at offset $($bad[0].Index). Remove them before releasing." }
+}
 
 # --- 2. tests --------------------------------------------------------------------
 if (-not $SkipTests) {

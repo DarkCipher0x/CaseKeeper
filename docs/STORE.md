@@ -242,8 +242,8 @@ matters, but the app itself shows none.
   everything about the website version's in-app updater (*Check for updates*, *Download and verify*,
   installing, update sources, GitHub, signing keys) and the *For developers* notes. A Store listing
   that describes downloading and installing updates from outside the Store invites a policy 10.2.2
-  rejection, even though the Store copy can't do it. For 0.6.1 (the first 0.6 version in the Store;
-  0.6.0 was never submitted), use:
+  rejection, even though the Store copy can't do it. For 0.6.2 (or 0.6.1), the first 0.6 version
+  in the Store (0.6.0 was never submitted), use:
 
   > - Choose your AI in Settings → AI: the local AI on this PC (Ollama), or Anthropic (Claude),
   >   OpenAI (GPT) or either on Microsoft Foundry with your own key. Pick the model and reasoning
