@@ -141,6 +141,7 @@ public partial class MainWindow : Window
             ? $"Hello, {me.Name.Split(' ')[0]}"
             : "Your case at a glance";
         RefreshDashboardExtras();
+        ScheduleMemoryRebuild();
     }
 
     private void OpenDocFromList_Click(object sender, RoutedEventArgs e)
@@ -254,6 +255,7 @@ public partial class MainWindow : Window
 
         ReloadAll();
         EnqueueOcr(imported);
+        QueueAutoCheck(imported);
         Nav.SelectedItem = DocumentsTab;
         if (failed.Count > 0)
             MessageBox.Show(this, "Some files could not be imported:\n\n" + string.Join("\n", failed), "Import",

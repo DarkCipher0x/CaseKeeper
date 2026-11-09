@@ -662,7 +662,9 @@ public class BulkImportWindow : Window
             return;
         }
         var ai = _options.RunAi && AiService.Enabled
-            ? $"\n\nThen {(AiProviders.IsCloud(AiService.BulkProvider) ? AiProviders.Get(AiService.BulkProvider).Name + " (after you've checked what will be sent)" : "your local AI")} will read each document and suggest categories, dates and records. Nothing is added to your case until you approve it in Import review."
+            ? $"\n\nThen {(AiProviders.IsCloud(AiService.BulkProvider) ? AiProviders.Get(AiService.BulkProvider).Name + " (after you've checked what will be sent)" : "your local AI")} will read each document and find categories, dates and records. " +
+              (TrackAutoAdd.Enabled(App.Library.Db) ? "What it's confident about goes straight into your case, marked “From AI · check”; the rest waits in Import review."
+                                                    : "Nothing is added to your case until you approve it in Import review.")
             : "";
         if (MessageBox.Show(this, $"Import {count:N0} file(s) into your library?\n\nYour original files stay exactly where they are." + ai +
                                   "\n\nYou can pause at any time, and carry on later – even after closing CaseKeeper.",

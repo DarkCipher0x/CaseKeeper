@@ -14,6 +14,70 @@ folder, in `%LOCALAPPDATA%\CaseKeeper` (website installer) or `%USERPROFILE%\Cas
 
 ---
 
+## v0.8.0 — 9 November 2026
+
+A feature release. Put your case files in and **the Track sections fill themselves**: what the AI is confident about
+goes straight into Case & hearings, the Timeline, Directions & tasks, the Contact log, Complaints, Parties and the
+Scott schedule, marked *From AI · check* and undoable. CaseKeeper keeps an encrypted **case memory** so the AI always
+knows where your case stands, learns from your decisions, answers **questions about your case** with links to the
+pages, and the Dashboard shows **where your case stands**. The Documents list now shows the **latest version** of each
+document, **most important first**. Upgrade over any earlier version: nothing you already have is changed. From 0.5.0,
+*Settings → Updates* can install it for you.
+
+### New
+- **Track auto-add.** After a bulk import, *Check my library* or the automatic check of new imports, suggestions with
+  at least medium confidence, nothing that needs checking first, no conflict with another document and nothing like
+  them already in the case are added to your case through the same checks and audit as approving by hand. Each
+  record's notes say *Added automatically from "document", page N … From AI · check it against the document.* The same
+  hearing found in several documents is added once; someone already in Parties, or a complaint already in Complaints,
+  only has empty details filled in; categories are only set for Uncategorised documents. Everything else waits in
+  Import review. Switch it off in the *Check my library* dialog or *Review options… → AUTOMATIC*.
+- **Added by AI – to check** (Import review, and a chip on the Dashboard): *Mark selected as checked*, *Undo
+  selected*, *Undo everything from the last run…*, and *Undo what this check added…* on the Library check card.
+  Anything undone is never added automatically again, even if the document is read again.
+- **New documents are checked by themselves** (*From now on, do this by itself for documents I import*, in the
+  Check my library dialog): read once their text is ready and added the same way. With a cloud AI you're asked first.
+- **Case memory** (sidebar, under Overview): exactly what the AI knows about your case, built from your records
+  (never anyone's contact details), stored in the library database – encrypted when the library has a password. A
+  short background goes to the AI with each document so it uses the same names and links to what's already there
+  (it can be switched off). Write *Things the AI should know*; see and *Forget* what it has learnt from you.
+- **CaseKeeper learns from your decisions:** a category you chose instead of the AI's is used for similar documents;
+  a rejected suggestion isn't suggested again; something you undid isn't added automatically again.
+- **Ask about your case** (Help assistant → *My case*, or the box on the Dashboard): answers from the case memory and
+  the best-matching pages of your documents, each fact cited with a button that opens the document at that page.
+  Organising help, not legal advice; it never changes anything. Audited as counts only.
+- **Where your case stands** on the Dashboard: stage, overview, next hearing, overdue directions, complaint replies,
+  missing documents, what the AI added, the latest timeline entries and what's coming up.
+- **Documents: latest version, most important first.** *Latest version of each document only* (on by default) folds
+  drafts and copies of one document – "– REVISED COPY v6", "– ORIGINAL v5", the same title twice, or the same words in
+  different files – into one line, the latest, with *Latest · N older versions* to see them all. *Order: Most
+  important first* puts the list under headings: Starred, Court papers & orders, Reports & assessments, Evidence,
+  Letters & correspondence, My notes & working copies, Photos/screenshots/recordings. Right-click → *Show all
+  versions* or *Mark as the latest version*. Nothing is renamed, moved or deleted.
+
+### Improved
+- A warning that only says something unsafe was left out (a time or reply date the document doesn't give, a child's
+  contact details), or that the document isn't filed yet, no longer holds a suggestion back.
+- Undoing one of several copies of the same finding now marks the copies too, so a later check can't add one back.
+- The cloud pre-send review says the case-memory background is sent with each document, masked like the rest.
+- Wording across the app, help assistant and guide now describes what's added automatically.
+
+### Fixed
+- A build warning (CS0108) in the Case map.
+
+### Components
+- No changes. .NET 10.0.14. No known vulnerabilities in any package.
+
+### For developers
+- New: `Services/BulkImport/TrackAutoAdd.cs`, `CaseMemory.cs`, `CaseQuestion.cs`, `Services/DocumentOrganiser.cs`,
+  `Views/Modules/CaseMemoryView.cs`, `Views/MainWindow.CaseStands.cs`, `Views/MainWindow.DocOrder.cs`. New staging
+  tables `CaseMemory` and `CaseLearning` (created automatically, never merged between libraries); `AiFinding` gains
+  `AppliedByJobId`; `BulkOptions.AutoAdd`; `AnalysisSettings.CaseContext` (not part of the fingerprint, so nothing is
+  re-read); new prompt `prompt.case.answer`. Settings `track.autoAdd`, `track.autoCheckImports`,
+  `casememory.useInAnalysis`, `docs.latestOnly`, `docs.arrange`. See `docs/BULK-IMPORT.md`.
+
+---
+
 ## v0.7.0 — 8 November 2026
 
 A feature release. **Check my library** organises everything already in CaseKeeper in one go – with AI or with

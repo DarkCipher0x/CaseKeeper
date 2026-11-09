@@ -36,7 +36,13 @@ static class Program
         return d;
     }
 
-    static LibraryService NewLib(string name) => new(NewDir(name));
+    /// <summary>A fresh library. Track auto-add is off, so the tests of approving by hand see every suggestion waiting.</summary>
+    static LibraryService NewLib(string name, bool autoAdd = false)
+    {
+        var lib = new LibraryService(NewDir(name));
+        lib.Db.SetSetting(TrackAutoAdd.Setting, autoAdd ? "1" : "0");
+        return lib;
+    }
 
     static string Put(string dir, string rel, string text)
     {
@@ -203,6 +209,235 @@ static class Program
         ["categorySuggestion"] = new JsonObject { ["categoryId"] = catKey, ["confidence"] = catConfidence, ["reason"] = "Looks like it", ["alternativeCategoryIds"] = new JsonArray() },
         ["findings"] = new JsonArray(findings.Select(f => (JsonNode)f).ToArray())
     }.ToJsonString();
+
+    // ================================================================== 0.8.0: the Documents list – what each file is, latest version on top
+    static void DocumentOrder()
+    {
+        var cats = new Dictionary<long, Category>
+        {
+            [1] = new Category { Id = 1, Name = "Uncategorised", GroupName = "Other" },
+            [2] = new Category { Id = 2, Name = "Final order", GroupName = "Court Orders & Notices" },
+            [3] = new Category { Id = 3, Name = "Section 7 report", GroupName = "CAFCASS" },
+            [4] = new Category { Id = 4, Name = "Photographs", GroupName = "Evidence" }
+        };
+        long id = 0;
+        CaseDocument D(string title, long cat = 1, string ext = ".pdf", int days = 0, bool star = false, string tags = "") => new()
+        {
+            Id = ++id, Title = title, CategoryId = cat, FileExtension = ext, OriginalFileName = title + ext, IsImportant = star, Tags = tags,
+            ImportedAt = new DateTime(2027, 1, 1).AddDays(days), PageCount = 1
+        };
+        const string ps = "ZZ27P00001 - Applicant Position Statement 01.02.2027";
+        var docs = new List<CaseDocument>
+        {
+            D(ps + " - ORIGINAL tone-edited v6 (bold, contact edits)", days: 9),
+            D(ps + " - REVISED COPY v2 (final)", days: 3),
+            D(ps + " - REVISED COPY v6", days: 1),        // added earliest, but the title says it's the latest
+            D(ps + " - ORIGINAL with evidence corrections v2", days: 2),
+            D(ps + " - REVISED COPY v4 (final, with omissions)", days: 4),
+            D("Hearing day checklist and schedule 01.02.2027", days: 5),
+            D("Hearing day checklist and schedule 01.02.2027", days: 6),
+            D("Notice of final hearing", days: 7),
+            D("Notice of revised hearing time", days: 7),
+            D("Screenshot 20270105 101500 Messages", ext: ".png"),
+            D("IMG 4401", ext: ".jpg"),
+            D("Final order 3 March 2027", cat: 2),
+            D("Section 7 report", cat: 3),
+            D("Bank statement March"),
+            D("Letter from the school about attendance"),
+            D("Hearing preparation pack (analysis, not for filing)"),
+            D("Photo of the handover", cat: 4, ext: ".jpg"),
+            D("Old draft I want on top", star: true),
+            D("Wibble")
+        };
+        DocumentOrganiser.Organise(docs, cats);
+        CaseDocument T(string title) => docs.First(d => d.Title == title);
+
+        // ---- versions
+        Check(DocumentOrganiser.Family(ps + " - REVISED COPY v6") == DocumentOrganiser.Family(ps + " - ORIGINAL tone-edited v6 (bold, contact edits)") &&
+              DocumentOrganiser.Family("Position statement v2") == "position statement" && DocumentOrganiser.Family("Statement - REVISED COPY v2") == DocumentOrganiser.Family("Statement - ORIGINAL") && DocumentOrganiser.Family("A - copy") == "a - copy",
+            "documents: drafts and revised copies of one document are one family");
+        Check(DocumentOrganiser.Family("Notice of final hearing") != DocumentOrganiser.Family("Notice of revised hearing time") && T("Notice of final hearing").VersionFamily == "",
+            "documents: a version word inside the name (“Notice of final hearing”) isn't a version marker");
+        var latest = T(ps + " - REVISED COPY v6");
+        Check(!latest.IsOlderVersion && latest.OlderVersionCount == 4 && latest.VersionNote.Contains("4 older"),
+            "documents: REVISED COPY v6 is the latest of five, whatever order they were added in");
+        Check(T(ps + " - ORIGINAL tone-edited v6 (bold, contact edits)").IsOlderVersion && T(ps + " - REVISED COPY v4 (final, with omissions)").IsOlderVersion,
+            "documents: an original with a higher number, and a “final” revision, are still older than the latest revision");
+        var twins = docs.Where(d => d.Title.StartsWith("Hearing day checklist")).ToList();
+        Check(twins.Count(d => d.IsOlderVersion) == 1 && twins.Single(d => !d.IsOlderVersion).Id == twins.Max(d => d.Id),
+            "documents: two copies with the same title – the one added last is shown");
+        Check(DocumentOrganiser.VersionMarker("X - REVISED COPY v3") == (1, 3) && DocumentOrganiser.VersionMarker("X draft") == (-1, 0) && DocumentOrganiser.VersionMarker("X") == (0, 0),
+            "documents: revised beats original beats draft; then the higher number");
+
+        // ---- what each file is
+        Check(T(ps + " - REVISED COPY v6").ImportanceRank == (int)DocImportance.Court && T("Final order 3 March 2027").ImportanceRank == (int)DocImportance.Court,
+            "documents: position statements and orders are court papers");
+        Check(T("Section 7 report").ImportanceRank == (int)DocImportance.Reports && T("Letter from the school about attendance").ImportanceRank == (int)DocImportance.Reports,
+            "documents: reports, from their category or their title");
+        Check(T("Screenshot 20270105 101500 Messages").ImportanceRank == (int)DocImportance.Media && T("IMG 4401").ImportanceRank == (int)DocImportance.Media &&
+              T("Photo of the handover").ImportanceRank == (int)DocImportance.Media,
+            "documents: screenshots and photos go last, even when filed as evidence");
+        Check(T("Hearing day checklist and schedule 01.02.2027").ImportanceRank == (int)DocImportance.Notes &&
+              T("Hearing preparation pack (analysis, not for filing)").ImportanceRank == (int)DocImportance.Notes,
+            "documents: checklists and working notes are the person's own notes, not court papers");
+        Check(T("Bank statement March").ImportanceRank != (int)DocImportance.Court, "documents: a bank statement isn't a court statement");
+        Check(T("Old draft I want on top").ImportanceRank == (int)DocImportance.Starred, "documents: starred documents come first");
+
+        // ---- the list as shown
+        var shown = DocumentOrganiser.Arrange(docs, latestOnly: true, DocumentOrganiser.ArrangeImportance);
+        Check(shown.Count == docs.Count - 5 && !shown.Any(d => d.IsOlderVersion), "documents: latest only folds the older versions away");
+        Check(shown[0].Title == "Old draft I want on top" && shown[1].ImportanceRank == (int)DocImportance.Court &&
+              shown.Last().ImportanceRank >= (int)DocImportance.Media, "documents: most important first");
+        var everything = DocumentOrganiser.Arrange(docs, latestOnly: false, DocumentOrganiser.ArrangeImportance);
+        int at = everything.IndexOf(latest);
+        Check(everything.Count == docs.Count && everything.Skip(at + 1).Take(4).All(d => d.LatestVersionId == latest.Id && d.IsOlderVersion),
+            "documents: showing everything keeps each document's versions together, latest on top");
+        var oneOlder = docs.Where(d => d.Title == ps + " - REVISED COPY v2 (final)").ToList();
+        Check(DocumentOrganiser.Arrange(oneOlder, latestOnly: true, DocumentOrganiser.ArrangeImportance).Count == 1,
+            "documents: an older version is shown when its latest isn't in the same view");
+
+        // ---- the person's choice wins, and word-for-word groups join files with different names
+        T(ps + " - REVISED COPY v2 (final)").Tags = DocumentOrganiser.LatestTag;
+        DocumentOrganiser.Organise(docs, cats, new[] { (IReadOnlyList<long>)new List<long> { T("Wibble").Id, T("Bank statement March").Id } });
+        Check(!T(ps + " - REVISED COPY v2 (final)").IsOlderVersion && T(ps + " - REVISED COPY v6").IsOlderVersion, "documents: “Latest version” chosen by the person wins");
+        Check(T("Wibble").VersionFamily.Length > 0 && T("Wibble").VersionFamily == T("Bank statement March").VersionFamily,
+            "documents: files with the same words are versions, whatever they're called");
+    }
+
+    // ================================================================== 0.8.0: Track auto-add, case memory, questions about the case
+    static void TrackAutoAddAndMemory()
+    {
+        var lib = NewLib("track", autoAdd: true);
+        var src = NewDir("track-src");
+        Put(src, "notice.txt", "Notice of hearing. The final hearing is listed for 12 March 2027 at the Family Court. The applicant Ms Alma Testwell " +
+                               "must file a statement by 1 March 2027. Contact took place on 5 January 2027 at the contact centre. The respondent " +
+                               "alleges that on 3 December 2026 the applicant shouted at the handover.");
+        Put(src, "copy.txt", "Reminder for the file: the final hearing is listed for 12 March 2027 at the Family Court.");
+        JsonObject Hearing() => F("hearing", "Final hearing listed", 1, "the final hearing is listed for 12 March 2027", date: "2027-03-12", dateText: "12 March 2027",
+            role: "hearingListed", details: new JsonObject { ["hearingType"] = "final" });
+        var ai = new FakeAi
+        {
+            Respond = u => u.Contains("Reminder for the file") ? Answer(u, findings: Hearing()) : Answer(u, findings: new[]
+            {
+                Hearing(),
+                F("direction", "File a statement", 1, "must file a statement by 1 March 2027", date: "2027-03-01", dateText: "1 March 2027", role: "deadline",
+                    details: new JsonObject { ["responsibleParty"] = "applicant", ["actionRequired"] = "File a statement", ["dueDate"] = "2027-03-01" }),
+                F("contact", "Contact took place", 1, "Contact took place on 5 January 2027 at the contact centre", date: "2027-01-05", dateText: "5 January 2027",
+                    role: "contact", details: new JsonObject { ["contactOutcome"] = "Took place as arranged" }),
+                F("party", "Ms Alma Testwell, the applicant", 1, "The applicant Ms Alma Testwell", details: new JsonObject { ["name"] = "Alma Testwell", ["role"] = "applicant" }),
+                F("scottItem", "The applicant shouted at the handover", 1, "The respondent alleges that on 3 December 2026 the applicant shouted at the handover",
+                    date: "2026-12-03", dateText: "3 December 2026", role: "incidentAlleged", assertedBy: "respondent",
+                    details: new JsonObject { ["allegedBy"] = "respondent", ["allegation"] = "The applicant shouted at the handover" }),
+                F("timelineEvent", "Something the AI wasn't sure about", 1, "Notice of hearing", confidence: 0.4, date: "2027-03-12", dateText: "12 March 2027")
+            })
+        };
+        var svc = Svc(lib, ai, aiOn: true);
+        var (job, _) = Run(lib, svc, src, new BulkOptions());
+        var db = lib.Db;
+        var report = svc.LastAutoAdd;
+        Check(report != null && report.Added >= 5, $"auto-add: confident finds are added to the case ({report?.Describe()})");
+        Check(db.All<Hearing>().Count == 1, "auto-add: a hearing found in two documents is added once");
+        Check(db.All<CaseAction>().Count(a => a.Title.Contains("statement")) == 1 && db.All<ContactSession>().Count == 1 && db.All<ScottItem>().Count == 1,
+            "auto-add: the direction, the contact entry and the Scott schedule item are in their Track sections");
+        Check(db.GetParties().Any(p => p.Name == "Alma Testwell"), "auto-add: the person is added to Parties");
+        Check(db.All<Hearing>().All(h => h.Notes.Contains(FindingApprover.CheckMark)) && db.All<ContactSession>().All(c => c.Notes.Contains(FindingApprover.CheckMark)),
+            "auto-add: every record added is marked “From AI · check”");
+        var unsure = Findings(lib, FindingKinds.TimelineEvent).Where(f => f.Title.Contains("wasn't sure")).ToList();
+        Check(unsure.Count == 1 && unsure[0].StatusValue == FindingStatus.Proposed, "auto-add: a low-confidence find waits for review");
+        var toCheck = TrackAutoAdd.ToCheck(db);
+        Check(toCheck.Count == report!.Added && toCheck.All(f => f.AppliedByJobId == job.Id), "auto-add: what was added is listed to check, with its run");
+        Check(db.GetAudit(200).Any(a => a.Action == "ai.autoadd") && db.GetAudit(200).Count(a => a.Action == "ai.autoapply") >= report.Added, "auto-add: audited, each one and the run");
+        Check(TrackAutoAdd.Doubtful(new AiFinding { CheckNotes = "Probably the same as: copy.txt p.1. Approve one and reject the others." }) == false &&
+              TrackAutoAdd.Doubtful(new AiFinding { CheckNotes = "Case number ZZ1 differs from ZZ2. This document may belong to a different case." }) &&
+              TrackAutoAdd.Doubtful(new AiFinding { Warnings = "The date isn't in the text." }) &&
+              !TrackAutoAdd.Doubtful(new AiFinding { Warnings = "The AI couldn't match this document to the case's papers – check this is relevant before adding it.\nContact details for a child are never added." }) && TrackAutoAdd.Doubtful(new AiFinding { ConflictGroup = "hearing-date-1" }),
+            "auto-add: copies and reminders aren't doubts; other checks, warnings and conflicts are");
+
+        // ---- checking off one entry, then undoing the rest of the run
+        var contactFinding = toCheck.Single(f => f.Kind == FindingKinds.Contact);
+        Check(FindingApprover.Confirm(db, contactFinding) && db.Query<AiFinding>("Id=$i", ("$i", contactFinding.Id)).Single().StatusValue == FindingStatus.Approved,
+            "mark checked: an AI entry becomes an ordinary approval");
+        int undone = TrackAutoAdd.UndoRun(db, job.Id);
+        Check(undone == report.Added - 1 && db.All<Hearing>().Count == 0 && db.All<ScottItem>().Count == 0 && db.All<ContactSession>().Count == 1,
+            "undo the run: removes what it added, keeps what was checked");
+        var back = db.Query<AiFinding>("Kind=$k", ("$k", FindingKinds.Hearing)).Where(f => f.StatusValue == FindingStatus.Proposed).ToList();
+        Check(back.Count >= 1 && back.All(f => f.Warnings.Contains("won't be added automatically again")), "undo: back in the review list, never added automatically again");
+        var again = svc.CreateLibraryJob(db.GetDocuments(), new BulkOptions { LibraryCheck = true, RunAi = true }, "Library check");
+        svc.RunAsync(again.Id).GetAwaiter().GetResult();
+        Check(db.All<Hearing>().Count == 0, "undo: a later library check doesn't add it back");
+
+        // ---- switched off: everything waits
+        var off = NewLib("track-off", autoAdd: false);
+        var srcOff = NewDir("track-off-src");
+        Put(srcOff, "notice.txt", File.ReadAllText(Path.Combine(src, "notice.txt")));
+        var svcOff = Svc(off, ai, aiOn: true);
+        Run(off, svcOff, srcOff, new BulkOptions());
+        Check(off.Db.All<Hearing>().Count == 0 && off.Db.All<ContactSession>().Count == 0 && svcOff.LastAutoAdd == null && Findings(off, FindingKinds.Hearing).Count == 1,
+            "auto-add off: nothing is added, everything waits in Import review");
+
+        // ---- the case memory: built from the records, no contact details, given to the AI with each document
+        if (!db.GetParties().Any(p => p.Name == "Alma Testwell")) db.SaveParty(new Party { Role = "Applicant", Name = "Alma Testwell" });   // the run undo above took it out
+        db.SaveParty(new Party { Role = "Child (subject of proceedings)", Name = "Pip Testwell", Contact = "07700 900123", DateOfBirth = new DateTime(2018, 4, 2) });
+        db.SetSetting("case.number", "ZZ27P00001");
+        var memory = CaseMemory.Rebuild(db);
+        var all = string.Join("\n", memory.Select(m => m.Text));
+        Check(memory.Single(m => m.Section == "people").Text.Contains("Alma Testwell") && all.Contains("ZZ27P00001") && all.Contains("born 2018"),
+            "case memory: people, case details and children's year of birth are included");
+        Check(!all.Contains("07700 900123"), "case memory: contact details are never included");
+        Check(db.Query<CaseMemoryEntry>("").Count == CaseMemory.Sections.Length && CaseMemory.UpdatedAt(db) != null, "case memory: saved in the library database");
+        var block = DocumentAnalyzer.CaseContextBlock(CaseMemory.ForAnalysis(db));
+        Check(block.Contains("ALREADY KNOWN ABOUT THIS CASE") && block.Contains("Alma Testwell") && block.Contains("never copy anything from this background"),
+            "case memory: the background block for the AI says it isn't part of the document");
+        var later = NewDir("track-later");
+        Put(later, "letter.txt", "A short letter about school holidays and the summer timetable for the children.");
+        Run(lib, svc, later, new BulkOptions());
+        Check(ai.LastUser.Contains("ALREADY KNOWN ABOUT THIS CASE") && ai.LastUser.Contains("Alma Testwell"), "case memory: given to the AI with a new document");
+        var categories = db.GetCategories();
+        var doc0 = db.GetDocuments().First();
+        var pages0 = db.GetAllPageText(doc0.Id);
+        string Fp(string context) => new DocumentAnalyzer(ai, new AnalysisSettings { Prompt = "test prompt", PartChars = 9000, CaseContext = context }, categories).InputFingerprint(doc0, pages0);
+        Check(Fp("") == Fp("Lots of case background"), "case memory: never changes the fingerprint, so documents aren't read again");
+        db.SetSetting(CaseMemory.UseSetting, "0");
+        Put(later, "letter2.txt", "Another short letter about the summer timetable and the school holidays.");
+        Run(lib, svc, later, new BulkOptions());
+        Check(!ai.LastUser.Contains("ALREADY KNOWN ABOUT THIS CASE"), "case memory: switched off, it isn't given to the AI");
+        db.SetSetting(CaseMemory.UseSetting, "1");
+
+        // ---- learning from the person's decisions
+        var vague = db.Query<AiFinding>("Status=0 AND Kind=$k", ("$k", FindingKinds.TimelineEvent)).First(f => f.Title.Contains("wasn't sure"));
+        FindingApprover.Reject(db, vague);
+        var learnt = CaseMemory.Learnt(db);
+        Check(learnt.Any(l => l.Kind == CaseLearning.RejectedKind), "learning: a rejected suggestion is remembered");
+        Check(CaseMemory.WasRejected(learnt, new AiFinding { Kind = FindingKinds.TimelineEvent, Title = "Something the AI wasn't sure about", DateValue = new DateTime(2027, 3, 12) }) &&
+              !CaseMemory.WasRejected(learnt, new AiFinding { Kind = FindingKinds.TimelineEvent, Title = "Something the AI wasn't sure about", DateValue = new DateTime(2027, 4, 1) }),
+            "learning: the same suggestion is recognised; a different date is not");
+        var kept = BulkImportService.ApplyLearning(doc0, new List<AiFinding> { new() { Kind = FindingKinds.TimelineEvent, Title = "something the AI wasn't sure about", DateValue = new DateTime(2027, 3, 12) } }, learnt, categories);
+        Check(kept.Count == 0, "learning: a suggestion rejected before is left out of a new reading");
+        var target = categories.First(c => c.Name == "Cafcass complaint");
+        var letter = new CaseDocument { Title = "Wibblesworth nursery attendance record", OriginalFileName = "wibblesworth-nursery-attendance.pdf" };
+        CaseMemory.LearnCategory(db, letter, target.Id, null, target.DisplayName);
+        learnt = CaseMemory.Learnt(db);
+        var similar = new CaseDocument { Title = "Wibblesworth nursery attendance record – spring", OriginalFileName = "wibblesworth-nursery-attendance-spring.pdf" };
+        Check(CaseMemory.LearnedCategory(learnt, similar) == target.Id && CaseMemory.LearnedCategory(learnt, new CaseDocument { Title = "Bank statement", OriginalFileName = "bank.pdf" }) == null,
+            "learning: a category the person chose is used for similar documents only");
+        var guess = new AiFinding { Kind = FindingKinds.Category, Title = "Other", PayloadJson = new JsonObject { ["categoryId"] = categories.First().Id }.ToJsonString(), Confidence = 0.5 };
+        BulkImportService.ApplyLearning(similar, new List<AiFinding> { guess }, learnt, categories);
+        Check(FindingApprover.PLong(guess, "categoryId") == target.Id && guess.Confidence >= 0.9 && guess.Reason.Contains("before"), "learning: the AI's category is replaced by the person's choice");
+        Check(learnt.Any(l => l.Kind == CaseLearning.UndoneKind && l.Value == FindingKinds.Hearing), "learning: something undone is remembered, so a re-read never adds it automatically");
+        Check(CaseMemory.ForgetAll(db) == learnt.Count && CaseMemory.Learnt(db).Count == 0, "learning: everything learnt can be forgotten");
+        CaseMemory.SetNote(db, "“Mum” in the messages means Alma Testwell.");
+        Check(CaseMemory.Note(db).Contains("Mum") && CaseMemory.Rebuild(db).Single(m => m.Section == "notes").Text.Contains("Mum"), "case memory: the person's notes for the AI are kept and used");
+
+        // ---- questions about the case
+        var notice = db.GetDocuments().First(d => d.OriginalFileName == "notice.txt");
+        var (context, sources) = CaseQuestion.Build(db, "When must the statement be filed?");
+        Check(sources.Any(s => s.DocumentId == notice.Id) && context.Contains($"[doc:{notice.Id}:1]") && context.Contains("statement by 1 March 2027") && context.Contains("WHAT IS KNOWN ABOUT THE CASE"),
+            "case question: the case memory and the matching page, with its reference");
+        var (text, links) = CaseQuestion.ExtractDocLinks(db, $"The statement is due on 1 March 2027 (doc:{notice.Id}:1). See also (doc:999999:2).");
+        Check(links.Count == 1 && links[0].DocumentId == notice.Id && links[0].Page == 1 && !text.Contains("doc:") && text.Contains("notice"),
+            "case question: references become buttons; made-up documents are dropped");
+        Check(CaseQuestion.Keywords("When is the next hearing?").SequenceEqual(new[] { "next", "hearing" }), "case question: the question's words are searched");
+    }
 
     // ================================================================== 0.7.0: library check, complaints, latest edit
     static void LibraryCheckAndComplaints()
@@ -583,6 +818,8 @@ static class Program
         Hardening041();
         CloudAndVersions();
         LibraryCheckAndComplaints();
+        TrackAutoAddAndMemory();
+        DocumentOrder();
 
         Console.WriteLine(failures == 0 ? $"ALL PASSED{(skipped > 0 ? $" ({skipped} skipped – see SKIP lines)" : "")}" : $"{failures} FAILURE(S)");
         SqliteConnection.ClearAllPools();

@@ -97,6 +97,21 @@ INSERT INTO Events(EventDate,Title,EventType) VALUES('2026-10-02','Old event','O
         SqliteConnection.ClearAllPools();
         Check(Database.CanOpen(snap, key) && !Database.CanOpen(snap, null), "snapshot of an encrypted library is encrypted too");
         Check(new Database(snap, key).All<CaseAction>().Single().Title == "Secret task", "snapshot holds the data");
+        // 0.8.0: the case memory lives in the same database, so it's encrypted with everything else
+        edb.SaveQuiet(new CaseMemoryEntry { Section = "people", Text = "Applicant: Zebedee Marchbanks-Quill", Sources = 1 });
+        edb.SaveQuiet(new CaseLearning { Kind = CaseLearning.NoteKind, Value = "Mum means Zebedee" });
+        edb.Checkpoint();
+        SqliteConnection.ClearAllPools();
+        var reopened = new Database(encDb, key);
+        Check(reopened.Query<CaseMemoryEntry>("").Single().Text.Contains("Marchbanks") && reopened.Query<CaseLearning>("").Single().Value == "Mum means Zebedee",
+            "case memory and learning round-trip in an encrypted library");
+        SqliteConnection.ClearAllPools();
+        var rawBytes = File.ReadAllBytes(encDb);
+        Check(System.Text.Encoding.UTF8.GetString(rawBytes).IndexOf("Marchbanks", StringComparison.Ordinal) < 0 &&
+              System.Text.Encoding.Unicode.GetString(rawBytes).IndexOf("Marchbanks", StringComparison.Ordinal) < 0,
+            "case memory: not readable in the encrypted file");
+        Check(!Database.RecordTypes.Contains(typeof(CaseMemoryEntry)) && Database.StagingTypes.Contains(typeof(CaseLearning)),
+            "case memory: a working table (never merged between libraries)");
         Database.ConvertEncryption(snap, key, null);
         SqliteConnection.ClearAllPools();
         Check(Database.CanOpen(snap, null), "snapshot can be decrypted when protection is turned off");

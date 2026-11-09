@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.7.0-3dd6c8" alt="Version 0.7.0">
+  <img src="https://img.shields.io/badge/version-0.8.0-3dd6c8" alt="Version 0.8.0">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b7a75" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-3dd6c8" alt="MIT licence"></a>
@@ -55,7 +55,7 @@ Both use the same library, so you can switch between them without losing anythin
 **Check your download.** Each release lists SHA-256 checksums in `SHA256SUMS.txt`. In PowerShell:
 
 ```powershell
-Get-FileHash .\CaseKeeper-Setup-v0.7.0.exe -Algorithm SHA256
+Get-FileHash .\CaseKeeper-Setup-v0.8.0.exe -Algorithm SHA256
 ```
 
 The result should match the line for that file exactly. If it doesn't, don't run it.
@@ -75,9 +75,12 @@ signatures don't vouch for.
 - **Import** PDFs, photos and scans, Word and text files by button or drag and drop. Originals are never changed.
 - **Bulk Case Import** – bring in a whole case folder and its subfolders: preview everything first, skip duplicates by
   fingerprint, keep the original folder paths, read the text, then (optionally) let your local AI suggest categories,
-  hearings, dates, directions and other records. Every suggestion cites its page and wording and waits in
-  **Import review** for you to approve, edit or reject; nothing reaches the case without your approval. Pause and
-  carry on any time, even after closing the app.
+  hearings, dates, directions and other records. Every suggestion cites its page and wording. What the AI is
+  confident about is added to your case straight away, marked *From AI · check* and undoable; everything else waits in
+  **Import review** for you to approve, edit or reject (or switch auto-add off). Pause and carry on any time, even
+  after closing the app.
+- **Latest version, most important first** – drafts and copies of one document show as one line, the latest, with
+  its older versions a click away, and the list is grouped from court papers and orders down to screenshots.
 - **~470 categories** covering the family courts: every C-form and supplement, FL401/403/407/415, FGM001, FL701,
   divorce and financial remedy forms (D8, D84, D36, D81, Form A–H1, P–P2, ES1/ES2), appeals (FP161, FP162, N161),
   EX160/EX107, orders, Cafcass, local authority and public law, adoption/SGO, police, health, education, experts,
@@ -119,7 +122,12 @@ signatures don't vouch for.
   changed sentence by sentence or side by side, and can move older copies to Deleted items.
 - **Check my library** – organise everything already in CaseKeeper in one go, with AI or with CaseKeeper's own rules:
   categories, parties and contacts, hearings and orders, the timeline, actions, complaints (filed, filled in, and
-  replies matched to them) and the Scott schedule – only the sections you choose, all waiting for your approval.
+  replies matched to them) and the Scott schedule – only the sections you choose. The **Track sections fill
+  themselves**: confident finds are added straight away, marked to check, and a whole run can be undone.
+- **Case memory** – what the AI knows about your case, built from your records and kept in your (encrypted) library,
+  so it reads new documents in context; it learns from your decisions, and you can see and forget everything.
+- **Ask about your case** – questions answered from your own records and documents, every fact with a button to the
+  page it came from; and a **Where your case stands** card on the Dashboard.
 - **Case map** – a matrix of your documents by category group (or party) against time, with hearings, orders,
   complaints and deadlines on the same time line, and an AI-written **case overview** of the whole case.
 

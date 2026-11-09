@@ -25,8 +25,9 @@ public partial class MainWindow
     public IReadOnlyList<Party> Parties => _parties;
     public IReadOnlyList<Category> Categories => _categories;
 
-    private TabItem CaseTab, ActionsTab, ContactTab, CostsTab, ScottTab, LettersTab, AiTab, ExportsTab, GuideTab, AuditTab, AssistantTab, ReviewTab, CaseMapTab;
+    private TabItem CaseTab, ActionsTab, ContactTab, CostsTab, ScottTab, LettersTab, AiTab, ExportsTab, GuideTab, AuditTab, AssistantTab, ReviewTab, CaseMapTab, MemoryTab;
     private CaseMapView _caseMapView;
+    private CaseMemoryView _memoryView;
     private HelpAssistantView _assistantView;
     private ImportReviewView _reviewView;
 
@@ -87,13 +88,14 @@ public partial class MainWindow
         AssistantTab = NewTab("Help assistant", "", () => _assistantView = new HelpAssistantView());
         ReviewTab = NewTab("Import review", "", () => _reviewView = new ImportReviewView());
         CaseMapTab = NewTab("Case map", "\uE81E", () => _caseMapView = new CaseMapView());
+        MemoryTab = NewTab("Case memory", "\uE8F1", () => _memoryView = new CaseMemoryView());
         DashboardTab.Header = "Dashboard";
         BundleTab.Header = "Bundles & reports";
         SettingsTab.Header = "Settings";
 
         var order = new (TabItem Tab, bool Pro)[]
         {
-            (NavHeader("OVERVIEW"), false), (DashboardTab, false), (CaseMapTab, false), (CaseTab, false),
+            (NavHeader("OVERVIEW"), false), (DashboardTab, false), (CaseMapTab, false), (MemoryTab, false), (CaseTab, false),
             (NavHeader("PAPERS"), false), (DocumentsTab, false), (ReviewTab, false), (SearchTab, false), (PartiesTab, false),
             (NavHeader("TRACK"), false), (TimelineTab, false), (ActionsTab, false), (ContactTab, false), (ComplaintsTab, false),
             (CostsTab, true), (ScottTab, true),
@@ -176,7 +178,7 @@ public partial class MainWindow
             "dashboard" => DashboardTab, "case" or "hearings" or "orders" => CaseTab, "documents" => DocumentsTab, "search" => SearchTab,
             "parties" => PartiesTab, "timeline" => TimelineTab, "actions" => ActionsTab, "contact" => ContactTab, "complaints" => ComplaintsTab,
             "costs" => CostsTab, "scott" => ScottTab, "letters" => LettersTab, "bundles" => BundleTab, "ai" => AiTab, "exports" => ExportsTab,
-            "guide" => GuideTab, "audit" => AuditTab, "settings" => SettingsTab, "assistant" => AssistantTab, "review" => ReviewTab, "casemap" => CaseMapTab, _ => null
+            "guide" => GuideTab, "audit" => AuditTab, "settings" => SettingsTab, "assistant" => AssistantTab, "review" => ReviewTab, "casemap" => CaseMapTab, "memory" => MemoryTab, _ => null
         };
         if (tab == null) return;
         if (tab.Visibility != Visibility.Visible) tab.Visibility = Visibility.Visible;   // reachable from the palette even when hidden
@@ -204,6 +206,15 @@ public partial class MainWindow
                 case "go" when target == "overview": _ = WriteCaseOverviewAsync(); break;
                 case "go": GoTo(target); break;
                 case "settings": GoToSettings(target); break;
+                case "doc":
+                {
+                    // (doc:ID) or (doc:ID:page) from an answer about the case
+                    var parts = target.Split(':');
+                    if (long.TryParse(parts[0], out var docId) && (FindDoc(docId) ?? Db.GetDocument(docId)) is { DeletedAt: null } d)
+                        OpenDocument(d, parts.Length > 1 && int.TryParse(parts[1], out var pg) && pg > 0 ? pg : 1);
+                    else MessageBox.Show(this, "That document is no longer in the library.", "CaseKeeper");
+                    break;
+                }
                 case "guide":
                     if (GuideContent.All.Any(a => a.Id == target)) OpenGuide(target);
                     else OpenGuide(search: target.Replace("app.", "").Replace('.', ' '));
@@ -219,6 +230,17 @@ public partial class MainWindow
         GoTo("assistant");
         if (!string.IsNullOrWhiteSpace(question))
             Dispatcher.BeginInvoke(() => _assistantView?.Ask(question), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Opens the assistant in "My case" mode, optionally asking a question about the case straight away.</summary>
+    public void AskAboutCase(string question)
+    {
+        GoTo("assistant");
+        Dispatcher.BeginInvoke(() =>
+        {
+            _assistantView?.SetMode(HelpAssistantView.CaseMode);
+            if (!string.IsNullOrWhiteSpace(question)) _assistantView?.Ask(question);
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     public void OpenGuide(string articleId = null, string search = null)
@@ -242,6 +264,7 @@ public partial class MainWindow
         else if (tab == CostsTab) _costsView?.Reload();
         else if (tab == ScottTab) _scottView?.Reload();
         else if (tab == CaseMapTab) _caseMapView?.Reload();
+        else if (tab == MemoryTab) _memoryView?.Reload();
         else if (tab == CaseTab) _caseHub?.Reload();
         else if (tab == AiTab) _aiView?.Reload();
         else if (tab == ExportsTab) _exportsView?.Reload();
@@ -376,6 +399,7 @@ public partial class MainWindow
         if (t == AssistantTab) return "app.assistant";
         if (t == ReviewTab) return "app.bulkimport";
         if (t == CaseMapTab) return "app.casemap";
+        if (t == MemoryTab) return "app.casememory";
         if (t == SettingsTab) return "app.security";
         return "quickstart";
     }
@@ -423,6 +447,10 @@ public partial class MainWindow
             Do("Check my library…", "\uE9D5", OpenLibraryCheck, "library check organise organize categorise duplicates versions latest edit complaints scott parties fill sections tidy"),
             Do("Case map", "\uE81E", () => GoTo("casemap"), "matrix overview layout laid out big picture grid timeline"),
             Do("Write the case overview", "\uE945", () => _ = WriteCaseOverviewAsync(), "overview summary whole case ai report"),
+            Do("Ask about my case…", "", () => AskAboutCase(null), "question case when did what did order say hearing ask ai legal aid"),
+            Do("What CaseKeeper knows (case memory)", "\uE8F1", () => GoTo("memory"), "memory brain knows learnt learned notes for the ai"),
+            Do("Check what the AI added", "", () => { GoTo("review"); Dispatcher.BeginInvoke(() => _reviewView?.Go("auto"), System.Windows.Threading.DispatcherPriority.Loaded); },
+                "added by ai to check automatic auto undo track"),
             Do("Add a hearing…", "", () => { GoTo("hearings"); Dispatcher.BeginInvoke(() => _caseHub?.HearingsView?.Add(), System.Windows.Threading.DispatcherPriority.Loaded); }),
             Do("Add a direction or task…", "", () => { GoTo("actions"); Dispatcher.BeginInvoke(() => _actionsView?.Add(), System.Windows.Threading.DispatcherPriority.Loaded); }),
             Do("Log contact…", "", () => { GoTo("contact"); Dispatcher.BeginInvoke(() => _contactView?.Add(), System.Windows.Threading.DispatcherPriority.Loaded); }),
@@ -556,6 +584,9 @@ public partial class MainWindow
             AppLog.Warn("Dashboard", "Couldn't load records for the dashboard", ex);
             return;
         }
+
+        try { DashboardExtras.Children.Add(CaseStandsCard(hearings, actions)); }
+        catch (Exception ex) { AppLog.Warn("Dashboard", "Couldn't build “Where your case stands”", ex); }
 
         var tiles = new WrapPanel();
         Border Tile(string glyph, string big, string label, string sub, string go, string brush = "AccentText")

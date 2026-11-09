@@ -42,3 +42,6 @@ packaging/store/store-identity.json
 _before_restore_*/
 _restore/
 _import/
+
+# Files the Docs tests render when run from their project folder
+tests/**/render-*.*

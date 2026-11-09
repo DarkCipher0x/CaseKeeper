@@ -478,7 +478,7 @@ public partial class MainWindow
         sp.Children.Add(Ui.Muted("Edit the instructions the AI follows. The system prompt applies to everything; each report type has its own. {task} is replaced with the report's instructions.", 12));
         var promptKeys = new List<(string Key, string Label)>
         {
-            ("prompt.system", "System prompt (applies to everything)"), ("prompt.helpdesk", "Help assistant (how to use CaseKeeper)"),
+            ("prompt.system", "System prompt (applies to everything)"), ("prompt.helpdesk", "Help assistant (how to use CaseKeeper)"), ("prompt.case.answer", "Help assistant – questions about my case"),
             ("prompt.map", "Granular: reading each part"),
             ("prompt.reduce", "Granular: combining the parts"), ("prompt.rewrite", "Improve wording (letters)"),
             ("prompt.explain", "Explain simply (guide)"), ("prompt.guide.answer", "Answer questions from the guide"),

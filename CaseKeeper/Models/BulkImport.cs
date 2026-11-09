@@ -242,6 +242,8 @@ public class AiFinding : IEntity
     public string AnalysisVersion { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? DecidedAt { get; set; }
+    /// <summary>The run (job) that added this automatically, so a whole run can be undone together. Null when added by hand.</summary>
+    public long? AppliedByJobId { get; set; }
 
     [NotStored] public FindingStatus StatusValue { get => (FindingStatus)Status; set => Status = (int)value; }
     /// <summary>Display only: the document's title, filled in by the screen.</summary>
@@ -275,7 +277,7 @@ public class AiFinding : IEntity
         FindingStatus.Approved => "Approved",
         FindingStatus.Rejected => "Rejected",
         FindingStatus.Deferred => "Deferred",
-        FindingStatus.AutoApplied => "Applied by AI rule",
+        FindingStatus.AutoApplied => "Added by AI – to check",
         FindingStatus.Superseded => "Replaced by newer analysis",
         FindingStatus.Undone => "Undone",
         FindingStatus.Applying => "Being approved",
@@ -397,6 +399,49 @@ public static class DateRoles
 }
 
 /// <summary>Confidence bands for AI suggestions. Changeable in the Import review screen.</summary>
+// ======================================================================================
+// Case memory ("what CaseKeeper knows about your case"). Kept in the library database, so it is
+// encrypted whenever the library is protected, goes into backups with everything else and is
+// deleted with the library. Working records: saved quietly, never merged between libraries
+// (the snapshot is rebuilt from the case records at any time).
+// ======================================================================================
+
+/// <summary>One section of the compiled case snapshot the AI reads, e.g. "people" or "hearings".</summary>
+[Entity("CaseMemory", "casememory", "case memory")]
+public class CaseMemoryEntry : IEntity
+{
+    public long Id { get; set; }
+    public string Section { get; set; } = "";
+    public string Text { get; set; } = "";
+    /// <summary>How many records the section was built from.</summary>
+    public int Sources { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+    public string AuditName => $"case memory section “{Section}”";
+}
+
+/// <summary>
+/// Something CaseKeeper has learnt from the person's own decisions: a category they chose instead of the AI's
+/// ("category"), a suggestion they rejected ("rejected"), or a note they wrote for the AI ("note").
+/// </summary>
+[Entity("CaseLearning", "caselearning", "learnt item")]
+public class CaseLearning : IEntity
+{
+    public long Id { get; set; }
+    public string Kind { get; set; } = "";
+    /// <summary>What to recognise: file-name/title words for a category, the kind|date|title of a rejection.</summary>
+    public string Pattern { get; set; } = "";
+    /// <summary>What to do with it: the category id for a category, the finding kind for a rejection, the note text.</summary>
+    public string Value { get; set; } = "";
+    /// <summary>A readable description shown on the Case memory screen.</summary>
+    public string Note { get; set; } = "";
+    public long? FindingId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public const string CategoryKind = "category", RejectedKind = "rejected", UndoneKind = "undone", NoteKind = "note";
+    public string AuditName => $"learnt item ({KindText})";
+    public string KindText => Kind switch { CategoryKind => "Category you chose", RejectedKind => "Suggestion you rejected", UndoneKind => "Something you undid", NoteKind => "Your note", _ => Kind };
+}
+
 public static class BulkThresholds
 {
     public static double High { get; set; } = 0.85;

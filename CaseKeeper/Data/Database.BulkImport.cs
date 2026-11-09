@@ -15,7 +15,7 @@ namespace CaseKeeper.Data;
 public partial class Database
 {
     /// <summary>Bulk-import working tables. Kept out of <see cref="RecordTypes"/> so they are never merged between libraries.</summary>
-    public static readonly Type[] StagingTypes = { typeof(ImportJob), typeof(ImportFile), typeof(AiFinding) };
+    public static readonly Type[] StagingTypes = { typeof(ImportJob), typeof(ImportFile), typeof(AiFinding), typeof(CaseMemoryEntry), typeof(CaseLearning) };
 
     private void EnsureBulkImportTables(SqliteConnection c)
     {

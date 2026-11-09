@@ -287,7 +287,7 @@ public sealed class CaseMapView : DockPanel
             new("Hearings", "hearings", Db.All<Hearing>().Select(h => new LaneItem(h.HearingDate, $"{h.HearingDate:d MMM yyyy} · {h.HearingType} ({h.Status})")).ToList()),
             new("Orders", "orders", Db.All<CourtOrder>().Select(o => new LaneItem(o.OrderDate, $"{o.OrderDate:d MMM yyyy} · {o.OrderType}")).ToList()),
             new("Complaints", "complaints", Db.GetComplaints().Select(c => new LaneItem(c.DateSent, $"{c.DateSentText} · {c.Recipient}: {c.Subject} ({c.Status})")).ToList()),
-            new("Scott schedule", "scott", Db.All<ScottItem>().Select(s => new LaneItem(s.IncidentDate, $"{s.ItemNo}. {Clip(s.Allegation, 80)}")).ToList()),
+            new("Scott schedule", "scott", Db.All<ScottItem>().Select(s => new LaneItem(s.IncidentDate, $"{s.ItemNo}. {ClipText(s.Allegation, 80)}")).ToList()),
             new("Deadlines", "actions", Db.All<CaseAction>().Where(a => a.DueDate != null && a.CompletedDate == null)
                 .Select(a => new LaneItem(a.DueDate, $"Due {a.DueDate:d MMM yyyy} · {a.Title}")).ToList()),
         };
@@ -369,5 +369,5 @@ public sealed class CaseMapView : DockPanel
         _ => k.Year.ToString(CultureInfo.InvariantCulture)
     };
 
-    private static string Clip(string s, int n) => string.IsNullOrEmpty(s) ? "" : s.Length > n ? s[..n] + "…" : s;
+    private static string ClipText(string s, int n) => string.IsNullOrEmpty(s) ? "" : s.Length > n ? s[..n] + "…" : s;
 }

@@ -83,7 +83,7 @@ public static class GuideContent
             "#. CaseKeeper reads the dates saved inside each file (when a PDF or Word file was last saved, and Word's revision number) for documents imported before it did so. Dates only – never names.\n" +
             "#. It reads any missing text, then the AI (or the rules) suggest what each document tells you, for the sections you chose.\n" +
             "#. It cross-checks everything and compares the whole library for copies and versions.\n" +
-            "#. **Import review** opens, with a *Library check* card at the top of *Summary* listing what's waiting, each line a link. Nothing changes until you approve it.\n\n" +
+            "#. **Import review** opens, with a *Library check* card at the top of *Summary*: what was added to your case, what's waiting, each line a link. With **Add what's found to the case straight away** ticked (the default), what CaseKeeper is confident about is already in your Track sections, marked *From AI · check* – see *What the AI adds by itself*. The rest waits for you.\n\n" +
             "## Complaints\n\n" +
             "Complaint letters and replies are recognised with or without AI: complaint wording plus an organisation CaseKeeper knows (Cafcass, HMCTS, the police, a council, an MP, an ombudsman, the JCIO, the SRA and others). " +
             "The suggestion gives the organisation, any reference, the date, and a reply deadline only when the letter states one – \"within 20 working days\" is worked out from the letter's date, skipping weekends, and marked for you to check because bank holidays aren't known. " +
@@ -104,6 +104,78 @@ public static class GuideContent
             "- **Case records** on the same time line: hearings, orders, complaints, Scott schedule items and deadlines. Hover for the list; click to open the screen.\n" +
             "- **People:** each party, with how many documents are linked to them and how many mention them.\n\n" +
             "Everything on the Case map is worked out on this PC; only the overview uses AI, with the same consent and masking as the rest of CaseKeeper."),
+
+        new("app.trackautoadd", "Using CaseKeeper", "What the AI adds by itself (Track auto-add)",
+            "automatic auto add track timeline directions tasks contact complaints hearings orders parties scott schedule fill populate added by ai to check undo run mark checked new imports auto-check",
+            "When CaseKeeper reads your documents – a **Bulk Case Import**, **Check my library**, or a document you've just imported – it adds what it's confident about straight into your case, so the **Track** sections fill themselves: *Case & hearings* (hearings and orders), *Timeline*, *Directions & tasks*, *Contact log*, *Complaints*, *Parties* and the *Scott schedule*. It also files Uncategorised documents and fills in empty document details.\n\n" +
+            "## What is added, and what waits\n\n" +
+            "Something is added only when all of these are true:\n\n" +
+            "- the AI is at least **medium confidence** that the document says it;\n" +
+            "- nothing about it **needs checking first** and there's **no conflict** with another document (for example two different dates for the same hearing). A note that only says something unsafe was left out – a time or reply date the document doesn't give, a child's contact details – or that the document isn't filed under a category yet, doesn't stop it;\n" +
+            "- it has what the record needs (a hearing or timeline entry needs a date; a deadline that has to be worked out always waits for you);\n" +
+            "- **nothing like it is already in your case** – a second document about the same hearing doesn't add it twice. Someone already in *Parties*, or a complaint already in *Complaints*, only has their **empty** details filled in;\n" +
+            "- you haven't undone or rejected the same thing before.\n\n" +
+            "Everything else waits in **Import review**, as before. Notes for review (issues, conflicts) are never added.\n\n" +
+            "## Checking what was added\n\n" +
+            "Each record's notes say where it came from – *Added automatically from “document”, page N … From AI · check it against the document.* " +
+            "**Import review → Added by AI – to check** lists them all (the Dashboard shows how many). Open each one's document, then:\n\n" +
+            "- **Mark selected as checked** – it becomes an ordinary approved record;\n" +
+            "- **Undo selected** – removes what was added; it goes back in the review list and is never added automatically again;\n" +
+            "- **Undo everything from the last run…**, or **Undo what this check added…** on the Library check card – takes back a whole run. Entries you've already checked are kept.\n\n" +
+            "Every addition and undo is in the audit trail, marked as added automatically by AI, with the document, page, model and confidence.\n\n" +
+            "## New documents\n\n" +
+            "With **From now on, do this by itself for documents I import** ticked (in the *Check my library* dialog), documents you import are read once their text is ready and added the same way. With a cloud AI you're always asked first, and shown what will be sent.\n\n" +
+            "## Switching it off\n\n" +
+            "Untick **Add what's found to the case straight away** in the *Check my library* dialog, or in *Import review → Review options… → AUTOMATIC*. Then everything waits for you to approve it. " +
+            "Filling the Track sections needs an AI – your local AI is fine. Without AI, CaseKeeper's own rules only suggest categories and complaints."),
+
+        new("app.casememory", "Using CaseKeeper", "Case memory – what CaseKeeper knows",
+            "case memory brain knows learnt learned remember notes for the ai forget rebuild encrypted what the ai is told context",
+            "**Case memory** (sidebar, under OVERVIEW) shows exactly what the AI is told about your case. It's how the AI knows where your case stands when it reads a new document, writes the case overview, or answers a question about your case.\n\n" +
+            "## What's in it\n\n" +
+            "It's built from your own records – case details, people (names, roles, representatives and children's year of birth; never anyone's contact details), hearings, orders, open directions and deadlines, complaints, the Scott schedule, the most recent timeline entries, a count of your documents by group, and the latest case overview. It's rebuilt by itself whenever your records change, and with **Rebuild now**.\n\n" +
+            "When the AI reads a document it's given the most useful part (people, case details, hearings, orders, complaints and your notes) so it uses the same names, links to what's already there instead of adding it again, and still takes every finding from the document's own words.\n\n" +
+            "## Things the AI should know\n\n" +
+            "Write anything that helps it read your papers correctly – who “Mum” or “Dad” means in messages, a nickname, that a set of papers is from an earlier case – and click **Save notes**. They're given to the AI with every document.\n\n" +
+            "## What it has learnt from you\n\n" +
+            "- When you **Edit & approve** a category to a different one, similar documents (by the words in their file name and title) go to your choice next time.\n" +
+            "- When you **reject** a suggestion, the same one (same kind, same date, much the same words) isn't suggested again.\n\n" +
+            "Each item has **Forget**, and **Forget everything learnt…** clears them all (your notes and records are kept).\n\n" +
+            "## Where it's kept\n\n" +
+            "In your library's database on this PC – **encrypted** when your library is protected with a password (*Settings → Security*), in your backups, and deleted with the library. It's never sent anywhere except as part of an AI request you've allowed: to your local AI, or to a cloud AI you've chosen, with names and personal details masked when masking is on. It isn't copied when libraries are merged; it's rebuilt from the records instead."),
+
+        new("app.documentorder", "Using CaseKeeper", "The document list: latest versions, most important first",
+            "latest version older versions revised copy copies drafts duplicates confusing important first order sort headings court papers screenshots what it is mark as latest show all versions tidy",
+            "When the same document has been saved many times – *ORIGINAL*, *tone-edited v5*, *REVISED COPY v6*, *(final)* – the list soon gets confusing. The **Documents** screen sorts that out for you, without changing or deleting anything.\n\n" +
+            "## Latest version of each document only\n\n" +
+            "Ticked by default. Copies and drafts of one document show as **one line, the latest**, with **Latest · N older versions** next to its title. Click that to see every version, latest first (older ones are shown lighter). Untick the box to see everything, with each document's versions kept together.\n\n" +
+            "CaseKeeper treats files as versions of one document when:\n\n" +
+            "- their titles are the same up to a version marker after a dash, underscore or bracket – *REVISED*, *ORIGINAL*, *AMENDED*, *UPDATED*, *FINAL*, *DRAFT*, *COPY*, *tone-edited*, *v6*, *(2)* – so *“Position statement – REVISED COPY v6”* and *“Position statement – ORIGINAL v2”* go together, but *“Notice of final hearing”* stays on its own; or\n" +
+            "- they have the same title; or\n" +
+            "- their words are mostly the same, whatever they're called (the same check as **Import review → Duplicates & versions**), unless you said there they aren't related.\n\n" +
+            "**Which is the latest:** the one you marked *Latest version* if you have; otherwise a revised/amended/updated copy beats an original, which beats a draft; then the highest number (v6 before v5); then the one most recently saved. If it's wrong, right-click the right one → **Mark as the latest version** (it's tagged *Latest version* and the others *Older version*, the same as in Import review).\n\n" +
+            "## Most important first\n\n" +
+            "**Order: Most important first, latest on top** puts the list under headings:\n\n" +
+            "1. **Starred** – anything you've starred;\n" +
+            "2. **Court papers & orders** – orders, applications (C100, C2…), position statements, witness statements, bundles, judgments;\n" +
+            "3. **Reports & assessments** – Cafcass, section 7 and 16A, experts, police, health, school;\n" +
+            "4. **Evidence**;\n" +
+            "5. **Letters & correspondence** – letters, emails, messages, complaints and replies, transcripts;\n" +
+            "6. **My notes & working copies** – checklists, analysis, preparation, inventories;\n" +
+            "7. **Photos, screenshots & recordings**;\n" +
+            "8. **Other documents**.\n\n" +
+            "A filed document goes under the heading for its category; an Uncategorised one is placed from its file type and title (**Check my library** files them properly). Within each heading the newest is first. Clicking a column heading sorts within each heading. The other orders are **Newest first** and **Most recently added first**. The optional column **What it is** (right-click the column headings) shows the heading for each document.\n\n" +
+            "All of this is worked out on this PC from what's already in your library. Nothing is sent anywhere, and nothing is renamed, moved or deleted."),
+
+        new("app.askcase", "Using CaseKeeper", "Ask about your case",
+            "ask about my case question when did what did order say next hearing where does my case stand assistant my case mode legal aid sources cite",
+            "Ask questions about your own case in your own words: *Where does my case stand?*, *What did the last order say about contact?*, *Which complaints are still waiting for a reply?*\n\n" +
+            "Open the **Help assistant** and choose **My case** at the top, or type into the **Ask about your case** box on the Dashboard.\n\n" +
+            "## How it answers\n\n" +
+            "The AI is given the **case memory** and the pages of your documents that best match your question (from the search index), with each document's summary. It's told to answer only from those, say when they don't cover something, and cite each fact – every citation becomes a button that **opens the document at that page**. Allegations are reported as what someone says, never as fact.\n\n" +
+            "It helps you organise and find things in your own papers. It doesn't give legal advice or predict what a court will decide – for that, see the Guide & FAQ, an advice service or a solicitor. It never changes anything in your case.\n\n" +
+            "## Privacy\n\n" +
+            "With your local AI everything stays on this PC. With a cloud AI, your question, the case memory and the matching extracts are sent for that answer, after you've agreed to use that service, and with names and personal details masked when masking is on (*Settings → AI*). The audit trail records each question as a count of characters and extracts – never the question itself. Without AI, the assistant lists the matching pages instead."),
 
         new("app.bulkimport", "Using CaseKeeper", "Bulk Case Import and Import review",
             "bulk import folder subfolders directory existing case organise ai suggestions review approve reject unknown confidence duplicates pause resume ollama speed slow fast careful model gemma graphics card gpu battery",
@@ -130,7 +202,7 @@ public static class GuideContent
             "Every suggestion shows the document, page and quoted words (*Open at page* shows it), the confidence and why it was suggested, and any warnings. " +
             "**Approve** adds it using the same form and rules as adding it by hand; **Edit & approve** lets you correct it first; **Reject** and **Defer** do what they say. " +
             "**Undo** removes what an approval added and puts the suggestion back. Every decision is in the audit trail, marked as AI-suggested and approved by you.\n\n" +
-            "There's an advanced option (off unless you turn it on) to file very confident categories automatically. It only ever changes the category of a document still in Uncategorised, never adds hearings, dates or any other record, and each change can be undone.\n\n" +
+            "What the AI is confident about is added to your case by itself (see *What the AI adds by itself*), and listed under **Added by AI – to check**. Switch that off in *Review options…*; there's then a separate option to file only very confident categories automatically.\n\n" +
             "## Speed and your PC\n\n" +
             "Bulk analysis uses a fast model, **gemma3:4b**, by default – *Review options* offers to download it if it isn't installed. Choose **Fast (recommended)** or **Careful** (a larger model, only when your graphics card can hold it). " +
             "CaseKeeper looks at your graphics card, memory and power and recommends settings: a PC without a suitable graphics card and little memory starts with AI off; a basic PC or a laptop on battery reads one document at a time for categories and document details only; a PC with a graphics card reads two to four documents at once in full. *Review options* shows *This PC: …*, marks models that are too large, and has **Use recommended settings**.\n\n" +

@@ -5,10 +5,11 @@ safety rules. For how to use it, see section 4 of the [user guide](../USER-GUIDE
 
 ## Principles
 
-- **The AI is an assistant, not an authority.** Nothing it says reaches a case record (hearings, timeline, orders,
-  directions, tasks, contact, parties, children, complaints) or a document's category until the person approves it.
-  The one exception is an *advanced, off-by-default* rule that may file a very confident category for a document that
-  is still Uncategorised; it never touches any other record, is audited, and can be undone.
+- **The AI is an assistant, not an authority.** A suggestion reaches a case record (hearings, timeline, orders,
+  directions, tasks, contact, parties, children, complaints) or a document's category either when the person approves
+  it, or – from 0.8.0, with Track auto-add on (the default) – when it passes every safety rule below. Every automatic
+  addition goes through the same `FindingApprover.Approve` path, is marked *From AI · check*, audited, listed under
+  *Added by AI – to check*, and can be undone singly or by run. Anything undone is never added automatically again.
 - **Reuse, don't duplicate.** Files go through `LibraryService.Import` (encryption, SHA-256 fingerprint, audit),
   text through `LibraryService.ProcessTextAsync` (Windows OCR, Word and text extraction), approvals through the same
   `Database` calls the screens use (`Save<T>`, `SaveEvent`, `SaveParty`, `SaveComplaint`, `UpdateDocument`), hearing
@@ -159,6 +160,61 @@ A library check is `BulkImportService.CreateLibraryJob(docs, BulkOptions, name)`
 - The text phase back-fills file dates first. On completion `librarycheck.last` is set; the start is audited as
   "Library check: N document(s)". `LibraryCheck.Count` / `DescribeForAssistant` give counts only (no titles, names or
   content) for the window, the Library check card and the help assistant's system prompt.
+
+## Track auto-add (`Services/BulkImport/TrackAutoAdd.cs`)
+
+Runs in the Checking phase of every job (after `FindingChecks.Run`) when `BulkOptions.AutoAdd ?? TrackAutoAdd.Enabled`
+(setting `track.autoAdd`, default on); otherwise the old very-confident-category rule runs. It takes the job's open
+(`Proposed`) findings and, in this order – Party, Child, Hearing, Order, Complaint (new before replies), Direction,
+Deadline, Task, MissingDocument, Timeline, Chronology, Safeguarding, Contact, Scott, Category, Summary; then by date,
+confidence and id – adds a finding only when:
+
+- `Confidence >= BulkThresholds.Medium` and not `Doubtful(f)`: every warning is `Informational` (something unsafe left
+  out, document not filed yet, a past hearing, the AI's wording of a contact outcome, a kind re-filed to fit its
+  wording), the conflict group is empty or a `dup-` group, and the only check notes are "Probably the same as:" or
+  "Coming up on". A `dup-` group adds its first member only.
+- `Prepare` returns a draft: a category only for an Uncategorised document and never "unknown"; a summary only fills
+  empty description, exact document date and author; a deadline that needs calculating waits.
+- `FindingApprover.Blocker` is null and `FindEquivalent` finds nothing (a party or complaint update must add something).
+
+It calls `Approve(..., automatic: true)`, sets `AppliedByJobId`, and audits `ai.autoadd`. `Confirm` (AutoApplied →
+Approved, `ai.confirm`), `UndoRun(jobId)` (`ai.autoadd.undo`) and `Undo` (also marks the finding's `dup-` copies, and
+records a `CaseLearning` of kind *undone*) complete it. `BulkImportService.ApplyLearning` re-marks a re-read finding
+that matches an undone one, drops one that matches a rejection, and applies a learned category.
+
+New imports: `MainWindow.QueueAutoCheck` (setting `track.autoCheckImports`) waits for OCR, asks first for a cloud AI,
+and runs a library check of the new documents.
+
+## Case memory and questions (`CaseMemory.cs`, `CaseQuestion.cs`)
+
+- `CaseMemory.Rebuild` compiles deterministic sections (case, people, hearings, orders, actions, complaints, scott,
+  timeline, documents, notes, overview) from the records into the staging table `CaseMemory` (library database, so
+  SQLCipher-encrypted when the library is protected; never merged). Never contact details; children get a year of
+  birth only. Rebuilt after jobs, review changes and (debounced) dashboard refreshes.
+- `CaseMemory.ForAnalysis` (≤ 2,500 characters) is given to `DocumentAnalyzer` as `AnalysisSettings.CaseContext` and
+  appended to the **user** message (so `CloudJsonClient` masks it) as "ALREADY KNOWN ABOUT THIS CASE … NOT part of the
+  document". It is not part of the input fingerprint. Setting `casememory.useInAnalysis` switches it off.
+- `CaseLearning` (staging): kinds *category* (file-name/title tokens → category, ≥ 0.8 overlap), *rejected* and
+  *undone* (kind, date, title similarity ≥ 0.75), and the person's *note*. `Forget` / `ForgetAll` are audited.
+- `CaseQuestion.Build` returns the memory plus up to six FTS extracts headed `[doc:ID:PAGE]` and the matching
+  documents' summaries; the answer (prompt `prompt.case.answer`) cites `(doc:ID:PAGE)`, turned into buttons by
+  `ExtractDocLinks` (unknown ids dropped). The context goes in the user turn so cloud masking applies. Audit
+  `ai.case.ask` holds counts only.
+
+## Document list order (`Services/DocumentOrganiser.cs`, `Views/MainWindow.DocOrder.cs`)
+
+Display only; nothing is stored except the person's *Latest version* / *Older version* tags.
+
+- `Family(title)`: the title up to the first version marker after a separator (`REVISED`, `ORIGINAL`, `AMENDED`,
+  `UPDATED`, `FINAL`, `DRAFT`, `COPY`, `tone-edited`, `vN`, `(N)` …) or a `vN` anywhere; at least four characters with a
+  letter, else the whole title. Families are joined (union-find) with the `VersionDetector` groups the person hasn't
+  marked *Not related* (computed in the background, cached by a library signature).
+- Latest: the *Latest version* tag, then not *Older version*, then `VersionMarker` stage (revised 1 > original 0 >
+  draft −1), number, last edited (`SavedAt`/`SourceModifiedAt`/`ImportedAt`), pages, id.
+- `Importance`: starred; else the category group's tier; else (Uncategorised) file type and title words – media,
+  notes, court, reports, correspondence, other. A family takes its most important member's tier.
+- `Arrange`: folds an older version only when its latest is in the same view; orders by tier, then newest, keeping a
+  family together with the latest first. Settings `docs.latestOnly`, `docs.arrange`.
 
 ## Complaints (`ComplaintRules.cs`, `FindingApprover`)
 

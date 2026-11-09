@@ -73,7 +73,8 @@ public partial class MainWindow
         }
         if (!AiService.EnsureEnabled(this, AiService.BulkProvider)) return;
         if (MessageBox.Show(this, $"Ask {(AiProviders.IsCloud(AiService.BulkProvider) ? AiProviders.Get(AiService.BulkProvider).Name : "your local AI")} to suggest a category, dates and records for {(docs.Count == 1 ? "this document" : $"these {docs.Count} documents")}?\n\n" +
-                                  "Nothing changes until you approve each suggestion in Import review.", "Organise with AI",
+                                  (TrackAutoAdd.Enabled(Db) ? "What it's confident about is added to your case straight away, marked “From AI · check”; the rest waits in Import review."
+                                                            : "Nothing changes until you approve each suggestion in Import review."), "Organise with AI",
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
         var job = Bulk.CreateLibraryJob(docs);
         _ = RunBulkJobAsync(job.Id);
@@ -82,7 +83,8 @@ public partial class MainWindow
 
     /// <summary>
     /// Library check: organise and cross-check documents already in the library, with or without AI, then (optionally)
-    /// write a case overview. Opens Import review, where everything it finds waits for approval.
+    /// write a case overview. Opens Import review: what's confident is added to the case (marked to check, when Track
+    /// auto-add is on) and the rest waits there for approval.
     /// </summary>
     public async void OpenLibraryCheck()
     {
@@ -159,8 +161,72 @@ public partial class MainWindow
                 ReloadAll();
                 _reviewView?.Reload();
                 RefreshDashboard();
+                // Say what went into the case, with the way to check it
+                if (Bulk.LastAutoAdd is { Added: > 0 } added) FlashBulkBanner(added.Describe() + " Open Import review → Added by AI – to check.");
             }
         }
+    }
+
+    /// <summary>Shows a message in the progress banner for a few seconds (with its Open button), then hides it.</summary>
+    private async void FlashBulkBanner(string text, int seconds = 12)
+    {
+        EnsureBulkBanner();
+        if (_bulkBanner == null) return;
+        _bulkBannerText.Text = text;
+        _bulkBannerBar.IsIndeterminate = false;
+        _bulkBannerBar.Value = _bulkBannerBar.Maximum;
+        _bulkBanner.Visibility = Visibility.Visible;
+        await Task.Delay(TimeSpan.FromSeconds(seconds));
+        if (!Bulk.IsRunning && _bulkBannerText.Text == text) HideBulkBanner();
+    }
+
+    // ------------------------------------------------------------------ auto-check of new imports
+    private readonly HashSet<long> _autoCheckQueue = new();
+    private System.Windows.Threading.DispatcherTimer _autoCheckTimer;
+
+    /// <summary>
+    /// Documents just imported are checked by themselves once their text is ready (setting track.autoCheckImports, on
+    /// unless switched off): the same reading as Check my library, and what's found is added to the case, marked to check.
+    /// With a cloud AI the person is always asked first, and sees what will be sent.
+    /// </summary>
+    public void QueueAutoCheck(IEnumerable<CaseDocument> docs)
+    {
+        if (!AiService.Enabled || Db.GetSetting(LibraryCheckWindow.AutoCheckSetting, "1") != "1") return;
+        foreach (var d in docs) if (d != null) _autoCheckQueue.Add(d.Id);
+        if (_autoCheckQueue.Count == 0) return;
+        if (_autoCheckTimer == null)
+        {
+            _autoCheckTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+            _autoCheckTimer.Tick += (_, _) => AutoCheckTick();
+        }
+        _autoCheckTimer.Start();
+    }
+
+    private async void AutoCheckTick()
+    {
+        try
+        {
+            if (_autoCheckQueue.Count == 0) { _autoCheckTimer.Stop(); return; }
+            if (Bulk.IsRunning || !IsLoaded) return;
+            var docs = _autoCheckQueue.Select(id => Db.GetDocument(id)).Where(d => d is { DeletedAt: null }).ToList();
+            if (docs.Any(d => d.OcrStatus is OcrStatus.Pending or OcrStatus.Running)) return;     // wait until the text is ready
+            _autoCheckTimer.Stop();
+            _autoCheckQueue.Clear();
+            if (docs.Count == 0 || !AiService.Enabled) return;
+            var provider = AiService.BulkProvider;
+            if (AiProviders.IsCloud(provider))
+            {
+                if (MessageBox.Show(this, $"Read the {docs.Count} document(s) you just imported with {AiProviders.Get(provider).Name} and add what's found to your case?\n\n" +
+                                          "You'll see what will be sent before anything leaves this PC.", "New documents",
+                        MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                if (!AiService.EnsureEnabled(this, provider)) return;
+            }
+            var options = new BulkOptions { LibraryCheck = true, RunAi = true, RunOcr = true, Remember = false, Sections = LibraryCheck.SavedSections(Db) is var s && s.Count < LibraryCheck.Sections.Length ? s : null };
+            var job = Bulk.CreateLibraryJob(docs, options, $"New documents – {docs.Count}");
+            Db.Audit("bulkimport.autocheck", "bulk import", job.Id, $"Checking {docs.Count} newly imported document(s) by themselves", "Setting: check new imports automatically.");
+            await RunBulkJobAsync(job.Id);
+        }
+        catch (Exception ex) { AppLog.Warn("BulkImport", "Couldn't check the new documents automatically", ex); }
     }
 
     public void ResumeBulkJob(long jobId)
@@ -269,7 +335,7 @@ public partial class MainWindow
             sp.Children.Add(Ui.Muted($"“{job.RootName}”, started {job.CreatedText}: {job.PhaseText.ToLowerInvariant()} ({job.StateText.ToLowerInvariant()}). " +
                                      "Everything done so far is safe. Carry on whenever you're ready.", 12.5));
         }
-        if (waiting > 0) sp.Children.Add(Ui.Muted($"{waiting:N0} AI suggestion(s) to check. Nothing is added to your case until you approve it.", 12.5));
+        if (waiting > 0) sp.Children.Add(Ui.Muted($"{waiting:N0} AI suggestion(s) waiting for you. They aren't in your case until you approve them.", 12.5));
         var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
         if (unfinished.Count > 0)
         {

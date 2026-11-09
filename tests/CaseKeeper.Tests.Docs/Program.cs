@@ -173,7 +173,11 @@ static class Program
                      ("How do I install Ollama?", "local AI"),
                      ("Can you check and organise my whole library?", "whole library"), ("How do I sort out everything I have already?", "whole library"),
                      ("Show me how my case is laid out", "Case map"), ("Is there a matrix view of my case?", "Case map"),
-                     ("How do I put complaints in the Complaints section?", "complaints"), ("What should I organise next?", "organise next")
+                     ("How do I put complaints in the Complaints section?", "complaints"), ("What should I organise next?", "organise next"),
+                     ("Why isn't it putting things in the Track section?", "Track sections"), ("Can it fill my timeline automatically?", "Track sections"),
+                     ("How do I undo what the AI added?", "Undo what the AI added"), ("What does the AI know about my case?", "know about my case"),
+                     ("Can I ask a question about my case?", "question about my case"),
+                     ("there are too many revised copies of my files", "Tidy my document list"), ("which is the latest version?", "Tidy my document list")
                  })
         {
             var m = HelpKnowledge.MatchRecipes(q).FirstOrDefault();
@@ -186,6 +190,9 @@ static class Program
               new[] { "librarycheck", "casemap", "overview" }.All(HelpKnowledge.Screens.ContainsKey), "help: the library check and Case map links are listed and valid");
         Check(CaseKeeper.Services.Guide.GuideContent.All.Any(a => a.Id == "app.librarycheck") && CaseKeeper.Services.Guide.GuideContent.All.Any(a => a.Id == "app.casemap"),
             "guide: the library check and Case map articles exist");
+        Check(new[] { "app.trackautoadd", "app.casememory", "app.askcase", "app.documentorder" }.All(id => CaseKeeper.Services.Guide.GuideContent.All.Any(a => a.Id == id)) &&
+              HelpKnowledge.Screens.ContainsKey("memory") && HelpKnowledge.AppMap.Contains("TRACK AUTO-ADD") && HelpKnowledge.AppMap.Contains("CASE MEMORY"),
+            "guide and help: Track auto-add, case memory and asking about the case are documented");
         var (strayText, stray) = HelpKnowledge.Finish("1. No, it stays on this computer.\n\nLinks: [Open Letters & templates](go:letters)", "Does my case data leave my computer?");
         Check(!stray.Any(l => l.Target == "letters") && stray.Any(l => l.Target == "ai") && !strayText.Contains("Letters"),
             "help: a link the AI copied from its instructions that has nothing to do with the question is dropped");

@@ -37,6 +37,10 @@ What to expect:
   receives only the text you ask it to read, masked by default, after you agree; the sidebar then shows
   *Cloud AI on* in amber. *Check for updates*
   only downloads, and only when you click it or switch on automatic checks.
+- **Case memory stays in the library.** What the AI knows about the case, and what it has learnt from the
+  person's decisions, is stored in the library database (encrypted with it), never contains contact details,
+  and is sent only inside an AI request the person has allowed – masked for a cloud AI when masking is on.
+  Questions about the case are audited as counts only.
 - **Optional encryption.** A random 256-bit master key encrypts documents (AES-256-GCM) and the
   database (SQLCipher). The key is stored only in wrapped form, protected by a key derived from your
   password (PBKDF2-HMAC-SHA256, 600,000 iterations). There is deliberately no recovery path: a

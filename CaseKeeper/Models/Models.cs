@@ -213,6 +213,19 @@ public class CaseDocument : Observable
 
     public string DocumentDateText => DocumentDate?.ToString("dd MMM yyyy") ?? "—";
 
+    // Documents list: what sort of paper it is and where it sits among its versions. Worked out by
+    // Services.DocumentOrganiser each time the list is shown; never stored or exported.
+    [System.Text.Json.Serialization.JsonIgnore] public int ImportanceRank { get; set; } = 7;
+    [System.Text.Json.Serialization.JsonIgnore] public string ImportanceText { get; set; } = "";
+    [System.Text.Json.Serialization.JsonIgnore] public string VersionFamily { get; set; } = "";
+    [System.Text.Json.Serialization.JsonIgnore] public bool IsOlderVersion { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public int OlderVersionCount { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public int VersionIndex { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public long LatestVersionId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public DateTime LatestEdit { get; set; }
+    private string _versionNote = "";
+    [System.Text.Json.Serialization.JsonIgnore] public string VersionNote { get => _versionNote; set => Set(ref _versionNote, value); }
+
     public string OcrStatusText => OcrStatus switch
     {
         OcrStatus.Pending => "Waiting for text scan",

@@ -47,5 +47,6 @@
     <Compile Include="$(Src)Services\BackupService.cs" />
     <Compile Include="$(Src)Services\DataRemoval.cs" />
     <Compile Include="$(Src)Services\BulkImport\*.cs" />
+    <Compile Include="$(Src)Services\DocumentOrganiser.cs" />
   </ItemGroup>
 </Project>

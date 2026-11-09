@@ -8,15 +8,15 @@ namespace CaseKeeper.Views;
 
 /// <summary>
 /// Library check: choose which documents already in the library to check, whether the AI helps (or only
-/// CaseKeeper's own rules), and which sections to fill. Everything it finds waits in Import review; nothing
-/// changes until it is approved there.
+/// CaseKeeper's own rules), which sections to fill, and whether what's found is added to the case straight away
+/// (marked to check, see TrackAutoAdd) or waits in Import review.
 /// </summary>
 public sealed class LibraryCheckWindow : FormDialog
 {
     private static Data.Database Db => App.Library.Db;
 
     private readonly RadioButton _all, _uncategorised, _notChecked;
-    private readonly CheckBox _useAi, _readText, _overview;
+    private readonly CheckBox _useAi, _readText, _overview, _autoAdd, _autoCheck;
     private readonly Dictionary<string, CheckBox> _sections = new();
     private readonly TextBlock _scopeCount;
     private readonly List<CaseDocument> _docs;
@@ -26,6 +26,9 @@ public sealed class LibraryCheckWindow : FormDialog
     public List<CaseDocument> Documents { get; private set; } = new();
     public BulkOptions Options { get; private set; }
 
+    /// <summary>"1": documents imported from now on are checked by themselves (see MainWindow's auto-check queue).</summary>
+    public const string AutoCheckSetting = "track.autoCheckImports";
+
     public LibraryCheckWindow() : base("Check my library", 640, 820, "Start check")
     {
         var stats = LibraryCheck.Count(Db);
@@ -34,8 +37,10 @@ public sealed class LibraryCheckWindow : FormDialog
         _checkedBefore = Db.Query<ImportFile>("DocumentId IS NOT NULL AND AnalysisStatus=$a", ("$a", (int)AnalysisState.Done))
             .Select(f => f.DocumentId!.Value).ToHashSet();
 
-        AddHint("CaseKeeper reads every document you choose, suggests where each belongs and what it tells you, and looks for " +
-                "copies and versions. Everything waits in Import review – nothing changes until you approve it.");
+        AddHint("CaseKeeper reads every document you choose, works out where each belongs and what it tells you – hearings, orders, " +
+                "directions, dates for the timeline, contact, complaints, people, Scott schedule items – and looks for copies and versions. " +
+                "What it's confident about goes straight into your case, marked “From AI · check”; the rest waits in Import review. " +
+                "Documents read before aren't read again unless they've changed.");
         Fields.Children.Add(new TextBlock
         {
             Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap,
@@ -60,6 +65,13 @@ public sealed class LibraryCheckWindow : FormDialog
         _useAi.IsEnabled = AiService.Enabled;
         AddHint("Without AI, CaseKeeper's own rules still suggest categories and complaint records, and the copies and versions check always runs.");
         _readText = Check("Read the text of documents that don't have it yet (slower for scans)", true);
+        _autoAdd = Check("Add what's found to the case straight away, marked to check (fills the Track sections, Case & hearings and Parties)", TrackAutoAdd.Enabled(Db));
+        AddHint("Only when CaseKeeper is confident, there are no warnings or conflicts and nothing like it is in your case already. Each one " +
+                "can be checked off or undone in Import review → Added by AI – to check, and the whole check can be undone in one go. " +
+                "Filling the Track sections needs an AI (your local AI is fine); without one, only categories and complaints are suggested.");
+        _autoCheck = Check("From now on, do this by itself for documents I import", AiService.Enabled && Db.GetSetting(AutoCheckSetting, "1") == "1");
+        _autoCheck.IsEnabled = AiService.Enabled;
+        AddHint("New documents are read once their text is ready. With a cloud AI you're always asked (and shown what will be sent) first.");
 
         Heading("What to fill in");
         var saved = LibraryCheck.SavedSections(Db);
@@ -120,11 +132,13 @@ public sealed class LibraryCheckWindow : FormDialog
         if (sections.Count == 0) { MessageBox.Show(this, "Choose at least one thing to fill in.", Title); return false; }
         Db.SetSetting(LibraryCheck.SectionsSetting, string.Join(",", sections));
         Db.SetSetting(LibraryCheck.OverviewSetting + ".want", _overview.IsChecked == true ? "1" : "0");
+        Db.SetSetting(TrackAutoAdd.Setting, _autoAdd.IsChecked == true ? "1" : "0");
+        if (_autoCheck.IsEnabled) Db.SetSetting(AutoCheckSetting, _autoCheck.IsChecked == true ? "1" : "0");
         Options = new BulkOptions
         {
             LibraryCheck = true, RunAi = _useAi.IsChecked == true, RunOcr = _readText.IsChecked == true,
             Sections = sections.Count == LibraryCheck.Sections.Length ? null : sections,
-            WriteOverview = _overview.IsChecked == true, Remember = false
+            WriteOverview = _overview.IsChecked == true, Remember = false, AutoAdd = _autoAdd.IsChecked == true
         };
         return true;
     }

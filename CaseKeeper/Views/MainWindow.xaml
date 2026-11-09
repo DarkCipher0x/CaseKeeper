@@ -285,6 +285,17 @@
                                                Visibility="{Binding Text, ElementName=DocFilterBox, Converter={StaticResource PlaceholderVis}}"/>
                                 </Grid>
                             </Grid>
+                            <WrapPanel Margin="0,0,0,10" VerticalAlignment="Center">
+                                <CheckBox x:Name="LatestOnlyBox" Content="Latest version of each document only" IsChecked="True" VerticalAlignment="Center"
+                                          Checked="DocArrange_Changed" Unchecked="DocArrange_Changed" Margin="0,0,18,0"
+                                          ToolTip="Drafts and copies of one document show as one line, the latest, with “+ older versions” to see the rest. Nothing is deleted."/>
+                                <TextBlock Text="Order:" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox x:Name="ArrangeBox" Width="230" SelectionChanged="DocArrange_Changed" AutomationProperties.Name="Order of the documents">
+                                    <ComboBoxItem Tag="importance" Content="Most important first, latest on top"/>
+                                    <ComboBoxItem Tag="newest" Content="Newest first"/>
+                                    <ComboBoxItem Tag="imported" Content="Most recently added first"/>
+                                </ComboBox>
+                            </WrapPanel>
                         </StackPanel>
                         <Grid>
                             <DataGrid x:Name="DocGrid" SelectionChanged="DocGrid_SelectionChanged" MouseDoubleClick="DocGrid_MouseDoubleClick"
@@ -308,9 +319,29 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2.2*" MinWidth="170">
+                                    <DataGridTemplateColumn Header="Title" SortMemberPath="Title" Width="2.2*" MinWidth="170" CanUserSort="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <DockPanel LastChildFill="True">
+                                                    <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource MutedBrush}" Visibility="{Binding VersionNote, Converter={StaticResource EmptyToVis}}">
+                                                        <Hyperlink Click="VersionBadge_Click" Foreground="{DynamicResource AccentText}" ToolTip="Show every version of this document, latest first"
+                                                                   AutomationProperties.Name="Show all versions"><Run Text="{Binding VersionNote, Mode=OneWay}"/></Hyperlink>
+                                                    </TextBlock>
+                                                    <TextBlock x:Name="TitleText" Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                </DockPanel>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOlderVersion}" Value="True">
+                                                        <Setter TargetName="TitleText" Property="FontWeight" Value="Normal"/>
+                                                        <Setter TargetName="TitleText" Property="Opacity" Value="0.65"/>
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="What it is" Binding="{Binding ImportanceText, Mode=OneWay}" SortMemberPath="ImportanceRank" Width="0.9*" Visibility="Collapsed">
                                         <DataGridTextColumn.ElementStyle>
-                                            <Style TargetType="TextBlock"><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/></Style>
+                                            <Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis"/></Style>
                                         </DataGridTextColumn.ElementStyle>
                                     </DataGridTextColumn>
                                     <DataGridTextColumn Header="Category" Binding="{Binding CategoryName}" Width="*">

@@ -428,6 +428,9 @@ public partial class MainWindow
         DocGrid.ContextMenu = Ui.Menu(
             Ui.Item(one ? "Open" : $"Open ({Math.Min(docs.Count, 5)})", "", () => OpenDoc_Click(this, new RoutedEventArgs()), "Enter", bold: true),
             Ui.Item("Open with default app", "", () => OpenExternal_Click(this, new RoutedEventArgs())),
+            Ui.Item(d0.VersionFamily.Length > 0 ? $"Show all versions ({_docs.Count(x => x.VersionFamily == d0.VersionFamily)})" : "Show all versions", "",
+                () => ShowVersions(d0), enabled: one && d0.VersionFamily.Length > 0),
+            Ui.Item("Mark as the latest version", "", () => MarkLatestVersion(d0), enabled: one && d0.IsOlderVersion),
             new Separator(),
             Ui.Item(one ? "Edit details…" : $"Edit {docs.Count} documents…", "", () => EditDoc_Click(this, new RoutedEventArgs()), "Ctrl+E"),
             Ui.Item("Rename…", "", RenameSelected, "F2", one),

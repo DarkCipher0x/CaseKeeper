@@ -58,7 +58,7 @@ The sidebar groups the screens:
 
 | Group | Screens |
 |---|---|
-| Overview | Dashboard · Case map · Case & hearings |
+| Overview | Dashboard · Case map · Case memory · Case & hearings |
 | Papers | Documents · Import review · Search · Parties |
 | Track | Timeline · Directions & tasks · Contact log · Complaints · Costs\* · Scott schedule\* |
 | Produce | Letters & templates · Bundles & reports · AI analysis\* · Exports\* |
@@ -97,6 +97,34 @@ uses one. Hover for what is sent and whether masking is on; click it to open *Se
 
 Everything except the overview is worked out on your PC.
 
+### Where your case stands (Dashboard)
+
+The **Dashboard** opens with a **Where your case stands** card, built from your own records: the stage your case has
+reached, the first paragraph of the latest case overview, and chips for the next hearing (with a countdown), overdue
+directions, what's due this week, complaint replies waiting, missing documents, **N added by AI – to check** and the
+last library check. Below that: the **most recent** timeline entries and what's **coming up**, each one clickable, and
+an **Ask about your case** box (see [Ask about your case](#ask-about-your-case)).
+
+### Case memory
+
+**Case memory** (sidebar, under Overview) shows exactly what the AI knows about your case. It's how the AI knows where
+things stand when it reads a new document, writes the case overview or answers a question.
+
+- **What's in it:** built from your records – case details; people (names, roles, representatives and a child's year
+  of birth – **never anyone's contact details**); hearings; orders; open directions and deadlines; complaints; the Scott
+  schedule; the latest timeline entries; a count of your documents by group; and the latest case overview. It's
+  rebuilt by itself whenever your records change, and with **Rebuild now**.
+- **Given to the AI with each document:** a short background (people, case details, hearings, orders, complaints and
+  your notes) so it uses the same names and links what it finds to what's already there. Every finding still has to
+  come from the document's own words. Untick **Give the AI a short background…** to stop this.
+- **Things the AI should know:** your own notes, e.g. who "Mum" or "Dad" means in messages. Click **Save notes**.
+- **What CaseKeeper has learnt from you:** a category you chose instead of the AI's (similar documents go there next
+  time), a suggestion you rejected (never suggested again) and something you undid after it was added automatically
+  (never added automatically again). **Forget** one, or **Forget everything learnt…**.
+- **Where it's kept:** in your library's database on this PC – **encrypted** when the library has a password, in your
+  backups, and deleted with the library. It only leaves your PC as part of an AI request you've allowed: to your local
+  AI, or to a cloud AI you chose, masked when masking is on. It isn't copied when libraries are merged.
+
 ## 3. Documents and categories
 
 The Documents screen works like File Explorer.
@@ -124,14 +152,30 @@ search, and the list is grouped under headings.
 **Smart folders** at the top of the tree: All documents, Starred, Recently added (14 days), Needs attention (no date,
 no category or OCR failed), By party, By original folder (after a Bulk Case Import), and **Deleted items**.
 
+**Latest versions, most important first.** Two options above the list keep it readable when you have many copies:
+
+- **Latest version of each document only** (ticked by default). Drafts and copies of one document show as **one line,
+  the latest**, with **Latest · N older versions** next to it – click that to see every version, latest first. Files
+  count as versions of one document when their titles match up to a version marker after a dash, underscore or
+  bracket (*– REVISED COPY v6*, *– ORIGINAL v2*, *(final)*, *(2)*), when they have the same title, or when their words
+  are mostly the same (the check in *Import review → Duplicates & versions*). The latest is the one you marked
+  *Latest version*; otherwise revised/amended beats original beats draft, then the higher number, then the most
+  recently saved. Wrong? Right-click the right one → **Mark as the latest version**. Nothing is deleted or renamed.
+- **Order: Most important first, latest on top** puts the list under headings – *Starred*, *Court papers & orders*,
+  *Reports & assessments*, *Evidence*, *Letters & correspondence*, *My notes & working copies*, *Photos, screenshots &
+  recordings*, *Other documents* – with the newest first in each. A filed document goes under its category's heading;
+  an Uncategorised one is placed from its file type and title. Clicking a column heading sorts within each heading.
+  The other orders are *Newest first* and *Most recently added first*.
+
 **Right-click a document** to: open; open with another program; edit details; rename (F2); move to a category;
 set the party; add or remove tags; star; give exhibit numbers (e.g. AB1, AB2… in date order); add to a bundle,
 the timeline or a complaint; analyse with AI; share; save copies; copy the title, a reference or the fingerprint;
-scan again; check it hasn't changed; see its full history; delete.
+scan again; check it hasn't changed; see its full history; delete; **Show all versions** and **Mark as the latest
+version**.
 
 **Drag and drop** documents onto a category (move), a party (set party), *Starred*, or *Deleted items*.
 
-**Columns.** Right-click a column heading to show Exhibit, Tags, From, Type, Size or Added. Drag headings to reorder.
+**Columns.** Right-click a column heading to show What it is, Exhibit, Tags, From, Type, Size or Added. Drag headings to reorder.
 
 **Deleted items.** Deleting moves a document here for 30 days (change it in *Settings → Safety & recovery*), then
 it's removed for good. Right-click to restore or delete permanently.
@@ -173,7 +217,8 @@ main window. If you close CaseKeeper, everything done so far is kept and the imp
 stopped: use **Carry on importing** on the Dashboard or **Carry on** in Import review.
 
 **Your original files are never moved, renamed or changed**, and nothing is written into the folder you import from.
-Imported documents wait in *Uncategorised* until you approve a category. The original file's own date is kept for
+Imported documents wait in *Uncategorised* until they're filed – by the AI when it's confident (see
+[What the AI adds by itself](#what-the-ai-adds-by-itself-track-auto-add)) or by you in Import review. The original file's own date is kept for
 information only (shown under *ORIGINAL FOLDER* in the document's details) and is **never** used as the document's
 date unless you choose it.
 
@@ -291,14 +336,53 @@ screen, **Check my library…** in Import review or on the Case map, or **Ctrl+K
 Click **Start check**. CaseKeeper first records the dates saved inside each file (dates and revision numbers only,
 never names), reads any missing text, suggests what each document tells you for the sections you chose, cross-checks
 everything, and compares the whole library for copies and versions. **Import review** opens with a **Library check**
-card at the top of *Summary*: what's waiting, each line a link, plus *Open the Case map* and *Write case overview*.
-**Nothing changes until you approve it.**
+card at the top of *Summary*: what was **added to your case (to check)**, what's waiting, each line a link, plus
+*What CaseKeeper knows*, *Undo what this check added…*, *Open the Case map* and *Write case overview*. What the AI is
+confident about is **added straight into your case**, marked to check (below); everything else waits for you. Untick
+**Add what's found to the case straight away** to approve everything yourself instead.
 
 - **Parties** already in *Parties* aren't added twice: the suggestion fills only their empty fields
   (representative, date of birth, and contact details for professionals and organisations – never for a child).
 - **Allegations** become *Scott schedule* suggestions: who alleges it, what is alleged, when, the finding sought and
   the document and page relied on – always recorded as what someone says, never as fact.
 - **Complaints** – see [Complaints](#11-complaints).
+
+### What the AI adds by itself (Track auto-add)
+
+So the **Track** sections fill themselves, a bulk import, a library check and the automatic check of new imports add
+what the AI found straight into *Case & hearings* (hearings and orders), *Timeline*, *Directions & tasks*, *Contact
+log*, *Complaints*, *Parties* and the *Scott schedule*. They also file Uncategorised documents and fill in empty
+document details. A suggestion is added only when **all** of these are true:
+
+- the AI is at least **medium confidence** that the document says it;
+- nothing about it **needs checking first** and there's **no conflict** with another document (for example two
+  different dates for one hearing). A note that only says something unsafe was left out – a time or reply date the
+  document doesn't give, a child's contact details – or that the document isn't filed yet, doesn't stop it;
+- it has what the record needs (a hearing needs a date; a deadline that has to be worked out always waits for you);
+- **nothing like it is already in your case** – the same hearing in five documents is added once. Someone already in
+  *Parties*, or a complaint already in *Complaints*, only has their **empty** details filled in;
+- you haven't rejected or undone the same thing before.
+
+Parties are added first, then hearings, orders, complaints (before their replies), directions, tasks, timeline,
+contact, Scott schedule items, and categories and document details last. Each one goes through exactly the same
+checks and audit as approving it by hand. Its notes say *Added automatically from "document", page N on date. From
+AI · check it against the document.*
+
+**Checking what was added.** *Import review → Added by AI – to check* lists everything added automatically (the
+Dashboard shows how many). Open each one's document, then **Mark selected as checked** (it becomes an ordinary
+approval) or **Undo selected**. **Undo everything from the last run…**, or **Undo what this check added…** on the
+Library check card, takes back a whole run – entries you've already checked are kept. Anything you undo goes back in
+the review list and is **never added automatically again**, even if the document is read again.
+
+**Switching it off.** Untick **Add what's found to the case straight away** in the *Check my library* dialog, or in
+*Import review → Review options… → AUTOMATIC*. Filling the Track sections needs an AI – your local AI is fine. Without
+AI, CaseKeeper's own rules only suggest categories and complaints.
+
+### New documents are checked by themselves
+
+With **From now on, do this by itself for documents I import** ticked (in the *Check my library* dialog), documents
+you import are read once their text is ready and added in the same way, with a message when it's done. With a cloud
+AI you're always asked first and shown what will be sent; with your local AI it just runs.
 
 ### Treat with care
 
@@ -311,7 +395,7 @@ out garbled, and a date written in a document that is later than the file itself
 **Import review** (sidebar, under Papers) holds every suggestion until you decide. Sections on the left group them:
 Summary, Duplicates & versions, Categorise documents, Unknown / needs a category, Document details, Hearings, Events & timeline, Orders, Directions &
 deadlines, Tasks & missing documents, Contact, Parties & children, Complaints, Conflicts & checks, Low confidence,
-Failed or not analysed, and the decided ones (Approved, Applied by AI rule, Deferred, Rejected). Filter by confidence,
+Failed or not analysed, and the decided ones (Approved, Added by AI – to check, Deferred, Rejected). Filter by confidence,
 document, dates or warnings, or search.
 
 Select a suggestion to see its **SOURCE** (the document, page and quoted words – **Open at page** shows it), the
@@ -330,10 +414,10 @@ and other documents to **COMPARE WITH** when there's a conflict. Then:
 Every approval, rejection and undo is in the audit trail, marked as suggested by AI and approved by you, with the
 model and prompt version. A rejected suggestion keeps no quoted text.
 
-**Automatic filing (advanced, off by default).** In *Review options…* you can let CaseKeeper file a document under
-the AI's category when it is very confident (0.95 by default). It only ever changes the category of a document still
-in Uncategorised; it never adds hearings, dates, deadlines or any other record. Each one is audited, listed under
-*Applied by AI rule*, and can be undone.
+**Automatic adding.** *Review options… → AUTOMATIC* switches [Track auto-add](#what-the-ai-adds-by-itself-track-auto-add)
+on or off. With it off, CaseKeeper can still file a document under the AI's category on its own when it is very
+confident (0.95 by default) – only ever for a document still in Uncategorised. Everything added automatically is
+audited, listed under *Added by AI – to check*, and can be undone.
 
 **If the AI isn't available,** the import still finishes, documents show *Waiting – AI not available*, and
 CaseKeeper's own rules still suggest categories from form codes. Start Ollama (or, for a cloud AI, check you're
@@ -626,6 +710,23 @@ numbered steps with the exact names of the buttons and menus, and **buttons that
 - From anywhere: press **Ctrl+K**, type your question and choose *Ask the help assistant*.
 - Its instructions are editable in *Settings → AI → Prompts → Help assistant*.
 
+### Ask about your case
+
+At the top of the Help assistant, choose **My case** (instead of *Help with CaseKeeper*) – or type into **Ask about
+your case** on the Dashboard – and ask about your own case: *Where does my case stand?*, *What did the last order say
+about contact?*, *Which complaints are still waiting for a reply?*
+
+- The AI is given the [case memory](#case-memory) and the pages of your documents that best match your question (from
+  the search index), with each document's summary. It's told to answer only from those, to say when they don't cover
+  something, and to cite each fact – every citation is a **button that opens the document at that page**.
+- Allegations are reported as what someone says, never as fact. It's organising help, not legal advice, and it never
+  changes anything in your case.
+- With your local AI nothing leaves your PC. With a cloud AI, your question, the case memory and the matching extracts
+  are sent for that answer, after you've agreed to use that service, and masked when masking is on. The audit trail
+  records each question as counts only – never the question.
+- Without AI, it lists the matching pages instead.
+- Its instructions are editable in *Settings → AI → Prompts → Help assistant – questions about my case*.
+
 ## 17. Exports
 
 *Exports* (Professional mode) lists everything saved into the library's Exports folder – bundles, letters, reports.
@@ -667,6 +768,9 @@ copies your set-up (no personal or case information) for a support request.
 - **Maximum security** (*Settings → Security*) turns on the strictest options in one click: lock after 5 minutes and
   with Windows, passwords on every backup, AI on your own computer or network only (any cloud AI is switched off), reminders
   before sharing, and 14-day logs.
+- **The case memory** (what the AI knows about your case, and what it has learnt from your decisions) is kept in
+  your library's database – encrypted with everything else when the library has a password – and leaves your PC only
+  inside an AI request you've allowed, masked for a cloud AI when masking is on. It never contains contact details.
 - Decrypted copies opened in other programs or shared are wiped when CaseKeeper closes (and at the next start, after
   a crash).
 - Exported Word, PDF and HTML files contain no author names or Windows user details. HTML exports contain no scripts

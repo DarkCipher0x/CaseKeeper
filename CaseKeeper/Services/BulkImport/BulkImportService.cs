@@ -24,12 +24,15 @@ public sealed class BulkOptions
     public bool LibraryCheck { get; set; }
     /// <summary>Write a case overview (AI → Reports) when the check finishes.</summary>
     public bool WriteOverview { get; set; }
+    /// <summary>Add what's found to the case straight away, marked to check (Track auto-add). Null uses the setting.</summary>
+    public bool? AutoAdd { get; set; }
 
     public string Describe() =>
         $"Subfolders: {(Scan.IncludeSubfolders ? "yes" : "no")} · hidden files: {(Scan.IncludeHiddenFiles ? "yes" : "no")} · " +
         $"links followed: {(Scan.FollowLinks ? "yes" : "no")} · folder paths kept: {(PreserveStructure ? "yes" : "no")} · " +
         $"folder mapping: {FolderMapping} · duplicates: {Duplicates} · text reading: {(RunOcr ? "yes" : "later")} · AI: {(RunAi ? "yes" : "no")}" +
-        (Sections == null ? "" : $" · sections: {string.Join(", ", Sections)}") + (WriteOverview ? " · case overview: yes" : "");
+        (Sections == null ? "" : $" · sections: {string.Join(", ", Sections)}") + (WriteOverview ? " · case overview: yes" : "") +
+        (AutoAdd is { } a ? $" · add to case automatically: {(a ? "yes" : "no")}" : "");
 }
 
 public sealed class BulkProgress
@@ -59,8 +62,8 @@ public sealed class BulkProgress
 ///
 /// Progress is saved after every file, so a job survives cancelling, pausing, a crash or a restart and
 /// carries on where it stopped. No phase holds a database transaction open for long; each file is its
-/// own unit of work. Nothing is added to hearings, the timeline or any other case record here: that only
-/// happens when the person approves a suggestion.
+/// own unit of work. Nothing is added to hearings, the timeline or any other case record by the phases themselves: that only
+/// happens when the person approves a suggestion, or through Track auto-add (TrackAutoAdd) when a run finishes.
 /// </summary>
 public sealed class BulkImportService
 {
@@ -80,6 +83,8 @@ public sealed class BulkImportService
     public int AiWorkers { get; set; } = 1;
     public int TextWorkers { get; set; } = Math.Max(1, Performance.OcrWorkers);
     public bool IsRunning { get; private set; }
+    /// <summary>What Track auto-add did at the end of the last run, or null when it was off.</summary>
+    public AutoAddReport LastAutoAdd { get; private set; }
     /// <summary>
     /// Shown before a cloud AI reads anything: what will be sent, where, and what's sensitive in it. Without it
     /// (or when the person says no) nothing is sent, and the documents wait for the AI.
@@ -315,6 +320,7 @@ public sealed class BulkImportService
         RunningJobId = jobId;
         _pauseRequested = false;
         _runStarted = DateTime.Now;
+        LastAutoAdd = null;
         _runCts = CancellationTokenSource.CreateLinkedTokenSource(outer);
         var ct = _runCts.Token;
         job.StateValue = ImportJobState.Active;
@@ -342,7 +348,18 @@ public sealed class BulkImportService
             {
                 Report(job, ImportPhase.Checking, 0, 1, "", "Cross-checking the documents…", null);
                 var report = await Task.Run(() => FindingChecks.Run(Db), ct);
-                AutoApplyCategories(job);
+                if (options.AutoAdd ?? TrackAutoAdd.Enabled(Db))
+                {
+                    Report(job, ImportPhase.Checking, 0, 1, "", "Adding what was found to your case…", null);
+                    LastAutoAdd = await Task.Run(() => TrackAutoAdd.Run(Db, job, LibraryCheck.KindsFor(options.Sections)), ct);
+                }
+                else
+                {
+                    LastAutoAdd = null;
+                    AutoApplyCategories(job);
+                }
+                try { CaseMemory.Rebuild(Db); }
+                catch (Exception ex) { AppLog.Warn("BulkImport", "Couldn't update the case memory", ex); }
                 Db.Audit("bulkimport.checks", "bulk import", job.Id, "Cross-checked the documents", report.Describe());
                 SetPhase(job, ImportPhase.Review);
             }
@@ -742,6 +759,12 @@ public sealed class BulkImportService
         }
 
         var baseSettings = _settings();
+        // Case memory: the AI is told what's already known (people, case numbers, hearings, orders, complaints, the
+        // person's notes) so it links to it instead of reporting it as new. It goes through the same masking as the text.
+        if (Db.GetSetting(CaseMemory.UseSetting, "1") != "0")
+            try { baseSettings = With(baseSettings, context: CaseMemory.ForAnalysis(Db)); }
+            catch (Exception ex) { AppLog.Warn("BulkImport", "Couldn't read the case memory", ex); }
+        var learnt = CaseMemory.Learnt(Db);
         // Library check: only the chosen sections are kept; categories alone can use the AI's quick reading
         var kinds = LibraryCheck.KindsFor(options.Sections);
         if (LibraryCheck.CategoriesOnly(options.Sections)) baseSettings = With(baseSettings, quick: true);
@@ -845,7 +868,8 @@ public sealed class BulkImportService
                     }
                     if (result.Ok)
                     {
-                        Db.ReplaceFindings(doc.Id, kinds == null ? result.Findings : result.Findings.Where(x => kinds.Contains(x.Kind)).ToList(), kinds);
+                        var keep = ApplyLearning(doc, kinds == null ? result.Findings : result.Findings.Where(x => kinds.Contains(x.Kind)).ToList(), learnt, categories);
+                        Db.ReplaceFindings(doc.Id, keep, kinds);
                         f.AnalysisValue = AnalysisState.Done;
                         f.AnalysisFingerprint = fingerprint;
                         f.AnalysedAt = DateTime.Now;
@@ -912,11 +936,36 @@ public sealed class BulkImportService
         }
     }
 
-    private static AnalysisSettings With(AnalysisSettings s, int? partChars = null, bool? quick = null) => new()
+    private static AnalysisSettings With(AnalysisSettings s, int? partChars = null, bool? quick = null, string context = null) => new()
     {
         Prompt = s.Prompt, PartChars = partChars ?? s.PartChars, MaxParts = s.MaxParts, RetryDelays = s.RetryDelays,
-        CategoriesOnly = quick ?? s.CategoriesOnly, MaxFindingsPerPart = s.MaxFindingsPerPart
+        CategoriesOnly = quick ?? s.CategoriesOnly, MaxFindingsPerPart = s.MaxFindingsPerPart, CaseContext = context ?? s.CaseContext
     };
+
+    /// <summary>
+    /// What CaseKeeper has learnt from the person: suggestions they rejected before are left out, and a document like
+    /// ones they filed by hand goes to the category they chose.
+    /// </summary>
+    public static List<AiFinding> ApplyLearning(CaseDocument doc, IReadOnlyList<AiFinding> findings, IReadOnlyList<CaseLearning> learnt, IReadOnlyList<Category> categories)
+    {
+        var keep = findings.Where(f => !CaseMemory.WasRejected(learnt, f)).ToList();
+        foreach (var f in keep.Where(f => CaseMemory.WasUndone(learnt, f)))
+            f.Warnings = DocumentAnalyzer.JoinWarnings(f.Warnings, FindingApprover.UndoneNote);
+        if (keep.Count < findings.Count)
+            AppLog.Info("BulkImport", $"Document #{doc.Id}: {findings.Count - keep.Count} suggestion(s) left out (rejected before)");
+        if (CaseMemory.LearnedCategory(learnt, doc) is { } cat && categories.FirstOrDefault(c => c.Id == cat) is { } category &&
+            keep.FirstOrDefault(f => f.Kind == FindingKinds.Category) is { } suggestion && FindingApprover.PLong(suggestion, "categoryId") != cat)
+        {
+            var payload = (string.IsNullOrWhiteSpace(suggestion.PayloadJson) ? null : System.Text.Json.Nodes.JsonNode.Parse(suggestion.PayloadJson) as System.Text.Json.Nodes.JsonObject)
+                          ?? new System.Text.Json.Nodes.JsonObject();
+            payload["categoryId"] = cat;
+            suggestion.PayloadJson = payload.ToJsonString();
+            suggestion.Title = category.DisplayName;
+            suggestion.Confidence = Math.Max(suggestion.Confidence, 0.9);
+            suggestion.Reason = $"You filed similar documents under {category.DisplayName} before.";
+        }
+        return keep;
+    }
 
     private void SetAwaiting(ImportJob job, List<ImportFile> files, string code, IReadOnlyList<Category> categories)
     {
@@ -924,6 +973,7 @@ public sealed class BulkImportService
         bool wantCategory = kinds == null || kinds.Contains(FindingKinds.Category), wantComplaint = kinds == null || kinds.Contains(FindingKinds.Complaint);
         bool Has(long docId, string kind) => Db.Query<AiFinding>("DocumentId=$d AND Kind=$k AND Status<>$s", ("$d", docId), ("$k", kind),
             ("$s", (int)FindingStatus.Superseded)).Any();
+        var learnt = CaseMemory.Learnt(Db);
         foreach (var f in files)
         {
             f.AnalysisValue = AnalysisState.AwaitingAi;
@@ -939,6 +989,7 @@ public sealed class BulkImportService
             if (wantCategory && !Has(doc.Id, FindingKinds.Category) &&
                 (complaint.FirstOrDefault(x => x.Kind == FindingKinds.Category) ?? DocumentAnalyzer.RuleBasedCategory(doc, pages, categories, job.Id)) is { } cat)
                 add.Add(cat);
+            add = ApplyLearning(doc, add, learnt, categories);
             if (add.Count > 0) Db.AddFindings(add);
         }
         Db.SaveQuietBatch(files);

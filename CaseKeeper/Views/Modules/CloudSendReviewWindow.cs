@@ -41,6 +41,10 @@ public class CloudSendReviewWindow : FormDialog
             ? "Microsoft Foundry: it's processed in your own Azure subscription, in the region your resource is in, under your Azure terms."
             : $"{req.Provider} handles it under its API terms, which can include keeping requests for a limited time for safety checks. It isn't used to train models under those terms, but check them if that matters to you.");
         Line($"Roughly {req.EstimatedTokens:N0} tokens of text in total. {req.Provider} charges your account for this.");
+        if (App.Library.Db.GetSetting(Services.BulkImport.CaseMemory.UseSetting, "1") != "0")
+            Line("With each document, a short background from your case memory is sent too (people's names and roles, case details, hearings, orders, " +
+                 "complaints and your notes for the AI – never contact details), masked the same way, so the AI can link to what's already known. " +
+                 "You can switch this off on the Case memory screen.");
 
         Section("PERSONAL DETAILS");
         if (req.Masking)

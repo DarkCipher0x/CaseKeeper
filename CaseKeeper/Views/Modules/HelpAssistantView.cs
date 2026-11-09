@@ -5,6 +5,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using CaseKeeper.Services;
+using CaseKeeper.Services.BulkImport;
 using CaseKeeper.Services.Documents;
 using CaseKeeper.Services.Guide;
 using CaseKeeper.UI;
@@ -12,13 +13,18 @@ using CaseKeeper.UI;
 namespace CaseKeeper.Views.Modules;
 
 /// <summary>
-/// The help assistant: ask how to do something in CaseKeeper and get step-by-step directions, with
-/// buttons that go straight to the right screen. Answers come from your local AI (Ollama), grounded
-/// in a map of the app and the user guide. It never sees anything about your case. Without AI it
-/// still finds the matching help.
+/// The help assistant, in two modes. "Help with CaseKeeper": ask how to do something and get step-by-step
+/// directions with buttons that go straight to the right screen, grounded in a map of the app and the user guide
+/// (it's told counts about the library, never titles, names or content). "My case": ask about your own case; the
+/// answer comes from the case memory and the matching pages of your documents, with buttons that open each source
+/// page. Either way it never changes anything. Without AI it still finds the matching help.
 /// </summary>
 public class HelpAssistantView : UserControl
 {
+    public const string AppMode = "app", CaseMode = "case";
+    private string _mode = App.Library.Db.GetSetting("assistant.mode", AppMode) == CaseMode ? CaseMode : AppMode;
+    private readonly RadioButton _appMode, _caseMode;
+    private readonly TextBlock _hint, _intro;
     private readonly StackPanel _messages;
     private readonly ScrollViewer _scroller;
     private readonly TextBox _input;
@@ -40,8 +46,16 @@ public class HelpAssistantView : UserControl
         titleRow.Children.Add(newChat);
         titleRow.Children.Add(Ui.Text("Help assistant", "H1"));
         head.Children.Add(titleRow);
-        head.Children.Add(Ui.Muted("Ask how to do anything in CaseKeeper, in your own words. You'll get step-by-step directions and buttons that take " +
-                                   "you straight there. Only your question is sent to your own AI – nothing about your case.", 13));
+        var modes = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 4) };
+        _appMode = new RadioButton { Content = "Help with CaseKeeper", GroupName = "assistantMode", IsChecked = _mode == AppMode, Margin = new Thickness(0, 0, 18, 0) };
+        _caseMode = new RadioButton { Content = "My case", GroupName = "assistantMode", IsChecked = _mode == CaseMode };
+        _appMode.Checked += (_, _) => SetMode(AppMode);
+        _caseMode.Checked += (_, _) => SetMode(CaseMode);
+        modes.Children.Add(_appMode);
+        modes.Children.Add(_caseMode);
+        head.Children.Add(modes);
+        _intro = Ui.Muted("", 13);
+        head.Children.Add(_intro);
         _status = Ui.Muted("", 12.5);
         _status.Margin = new Thickness(0, 8, 0, 6);
         _status.SetResourceReference(TextBlock.ForegroundProperty, "AccentText");
@@ -68,7 +82,7 @@ public class HelpAssistantView : UserControl
             Padding = new Thickness(12, 10, 12, 10), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalContentAlignment = VerticalAlignment.Top
         };
         System.Windows.Automation.AutomationProperties.SetName(_input, "Ask the help assistant");
-        var hint = new TextBlock { Text = "e.g. How do I put my case number on every letter?", Margin = new Thickness(14, 12, 0, 0), IsHitTestVisible = false, FontSize = 14 };
+        var hint = _hint = new TextBlock { Text = "e.g. How do I put my case number on every letter?", Margin = new Thickness(14, 12, 0, 0), IsHitTestVisible = false, FontSize = 14 };
         hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         hint.SetBinding(VisibilityProperty, new System.Windows.Data.Binding("Text")
             { Source = _input, Converter = (System.Windows.Data.IValueConverter)Application.Current.FindResource("PlaceholderVis") });
@@ -99,7 +113,34 @@ public class HelpAssistantView : UserControl
         root.Children.Add(frame);
 
         Content = root;
+        ApplyMode();
         Loaded += (_, _) => { RefreshStatus(); if (_messages.Children.Count == 0) Reset(); _input.Focus(); };
+    }
+
+    /// <summary>Switches between help with the app and questions about the case (remembered).</summary>
+    public void SetMode(string mode)
+    {
+        mode = mode == CaseMode ? CaseMode : AppMode;
+        if (mode == _mode && _messages.Children.Count > 0) { ApplyMode(); return; }
+        _mode = mode;
+        App.Library.Db.SetSetting("assistant.mode", mode);
+        ApplyMode();
+        Reset();
+    }
+
+    private void ApplyMode()
+    {
+        if (_appMode.IsChecked != (_mode == AppMode)) _appMode.IsChecked = _mode == AppMode;
+        if (_caseMode.IsChecked != (_mode == CaseMode)) _caseMode.IsChecked = _mode == CaseMode;
+        _intro.Text = _mode == CaseMode
+            ? "Ask about your own case – when something happened, what an order said, what's still outstanding. Answers come from your records and " +
+              "documents, with a button to open each source page. " +
+              (AiService.UsingCloud ? $"Your question, the case memory and the matching extracts are sent to {AiProviders.Get(AiService.Provider).Name}" +
+                                      (AiService.MaskCloud ? ", with names and personal details masked." : " (masking is off).")
+                                    : "Everything stays on this PC with your local AI.") + " Organising help only, not legal advice."
+            : "Ask how to do anything in CaseKeeper, in your own words. You'll get step-by-step directions and buttons that take " +
+              "you straight there. Only your question (and counts about your library) is sent to your AI – nothing about your case.";
+        _hint.Text = _mode == CaseMode ? "e.g. When is the next hearing, and what do I need to do before it?" : "e.g. How do I put my case number on every letter?";
     }
 
     private void RefreshStatus()
@@ -114,6 +155,21 @@ public class HelpAssistantView : UserControl
         _cts?.Cancel();
         _history.Clear();
         _messages.Children.Clear();
+        if (_mode == CaseMode)
+        {
+            AddAssistant("Ask me anything about your case and I'll answer from your records and documents, showing where each fact comes from. " +
+                         "The more you've organised (Check my library), the more I know.",
+                new List<HelpKnowledge.Link> { new("go", "memory", "What CaseKeeper knows"), new("go", "librarycheck", "Check my library") });
+            _suggestions.Children.Clear();
+            foreach (var s in CaseSuggestions)
+            {
+                var chip = new Button { Content = s, Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 6, 6), FontSize = 12.5 };
+                chip.Click += (_, _) => _ = AskAsync(s);
+                _suggestions.Children.Add(chip);
+            }
+            _suggestions.Visibility = Visibility.Visible;
+            return;
+        }
         AddAssistant("Hi! I can show you how to do anything in CaseKeeper – importing papers, finding a form, writing a statement, building a " +
                      "bundle, setting a password, using the AI and more. What would you like to do?",
             new List<HelpKnowledge.Link> { new("guide", "quickstart", "Quick start guide"), new("go", "guide", "Open Guide & FAQ") });
@@ -147,9 +203,11 @@ public class HelpAssistantView : UserControl
         if (!AiService.Enabled || string.IsNullOrWhiteSpace(AiService.ActiveModel)
             || (AiService.UsingCloud && !AiService.EnsureCloudConsent(Ui.Owner(this))))
         {
-            AnswerWithoutAi(question, null);
+            if (_mode == CaseMode) AnswerCaseWithoutAi(question);
+            else AnswerWithoutAi(question, null);
             return;
         }
+        if (_mode == CaseMode) { await AskCaseAsync(question); return; }
 
         var (bubble, body) = AddStreamingAssistant();
         _cts = new CancellationTokenSource();
@@ -213,6 +271,85 @@ public class HelpAssistantView : UserControl
         sb.AppendLine();
         sb.Append(HelpKnowledge.BuildContext(question, Math.Max(2500, AiService.ChunkChars / 3)));
         return sb.ToString();
+    }
+
+    public static readonly string[] CaseSuggestions =
+    {
+        "Where does my case stand right now?",
+        "When is the next hearing, and what do I need to do before it?",
+        "What directions are overdue or due soon?",
+        "Which complaints are still waiting for a reply?",
+        "What did the last order say?",
+        "What documents am I missing?"
+    };
+
+    // ------------------------------------------------------------------ questions about the case
+    private async Task AskCaseAsync(string question)
+    {
+        var (bubble, body) = AddStreamingAssistant();
+        _cts = new CancellationTokenSource();
+        _send.IsEnabled = false;
+        _stop.Visibility = Visibility.Visible;
+        var db = App.Library.Db;
+        try
+        {
+            var (context, sources) = await Task.Run(() => CaseQuestion.Build(db, question, Math.Clamp(AiService.ChunkChars, 6000, 24000)));
+            // The case details go in the message, not the instructions: messages are what a cloud AI's masking covers
+            var system = AiService.Prompt("prompt.case.answer") + $"\n\nTODAY'S DATE: {DateTime.Today:d MMMM yyyy}";
+            var turns = _history.TakeLast(6).ToList();
+            turns.Add(("user", context + "\n\nQUESTION: " + question));
+            db.Audit("ai.case.ask", "ai", null, $"Question about the case ({AiService.ActiveModel})",
+                $"{question.Length} characters; sent with the case memory and {sources.Count} matching extract(s){(AiService.UsingCloud ? $" to {AiProviders.Get(AiService.Provider).Name}{(AiService.MaskCloud ? ", masked" : ", not masked")}" : " to the local AI")}.");
+            var answer = await AiService.ChatAsync(system, turns, piece => Dispatcher.BeginInvoke(() =>
+            {
+                body.Text += piece;
+                _scroller.ScrollToEnd();
+            }), _cts.Token);
+            _history.Add(("user", question));
+            _history.Add(("assistant", answer));
+            _messages.Children.Remove(bubble);
+            AddCaseAnswer(answer);
+        }
+        catch (OperationCanceledException)
+        {
+            _messages.Children.Remove(bubble);
+            AddCaseAnswer(body.Text + "\n\n*(stopped)*");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("AI", "Case question couldn't reach the AI", ex);
+            _messages.Children.Remove(bubble);
+            AddAssistant($"I couldn't reach your AI ({ex.Message}). You can still look things up in **Case memory**, the **Case map** and **Search**.",
+                new List<HelpKnowledge.Link> { new("go", "memory", "What CaseKeeper knows"), new("go", "search", "Open Search") });
+        }
+        finally
+        {
+            _cts = null;
+            _send.IsEnabled = true;
+            _stop.Visibility = Visibility.Collapsed;
+            _input.Focus();
+        }
+    }
+
+    private void AddCaseAnswer(string answer)
+    {
+        var (withoutDocs, docs) = CaseQuestion.ExtractDocLinks(App.Library.Db, answer);
+        var (text, links) = HelpKnowledge.ExtractLinks(withoutDocs);
+        var all = docs.Take(6).Select(d => new HelpKnowledge.Link("doc", $"{d.DocumentId}:{d.Page}", $"Open “{(d.Title.Length > 40 ? d.Title[..40] + "…" : d.Title)}” p. {d.Page}"))
+            .Concat(links.Take(2)).ToList();
+        AddAssistant(text, all);
+    }
+
+    /// <summary>Without AI: the matching pages from the search index, each with a button to open it.</summary>
+    private void AnswerCaseWithoutAi(string question)
+    {
+        var (_, sources) = CaseQuestion.Build(App.Library.Db, question, 8000);
+        var links = sources.Select(s => new HelpKnowledge.Link("doc", $"{s.DocumentId}:{s.Page}", $"Open “{(s.Title.Length > 40 ? s.Title[..40] + "…" : s.Title)}” p. {s.Page}")).ToList();
+        AddAssistant(sources.Count == 0
+                ? "AI is off, and I couldn't find pages matching those words. Try **Search** with a name, date or reference, or look at **Case memory**."
+                : "AI is off, so I can't write an answer, but these pages match your question:",
+            links.Count > 0 ? links : new List<HelpKnowledge.Link> { new("go", "search", "Open Search"), new("go", "memory", "What CaseKeeper knows") },
+            showSetup: true);
     }
 
     /// <summary>Without AI: ready-made directions if one matches, else the best help sections, with buttons.</summary>

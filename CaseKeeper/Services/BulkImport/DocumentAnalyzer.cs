@@ -53,6 +53,11 @@ public sealed class AnalysisSettings
     public bool CategoriesOnly { get; init; }
     /// <summary>Most findings asked for per part. Shorter answers are much quicker for a local model to write.</summary>
     public int MaxFindingsPerPart { get; init; } = 12;
+    /// <summary>
+    /// What is already known about the case (case memory), given with each document so the AI links to it. Not part of
+    /// the fingerprint: a change to the case never makes documents be read again.
+    /// </summary>
+    public string CaseContext { get; init; } = "";
 
     public string PromptVersion => "p-" + AnalysisSchema.Hash(Prompt)[..10];
 }
@@ -148,6 +153,16 @@ public sealed class DocumentAnalyzer
         return parts;
     }
 
+    /// <summary>
+    /// The case memory as given to the AI. It is background only: findings must still come from the document's own words.
+    /// </summary>
+    public static string CaseContextBlock(string context) =>
+        string.IsNullOrWhiteSpace(context) ? ""
+            : "ALREADY KNOWN ABOUT THIS CASE (background from the person's own records, NOT part of the document):\n" + context.Trim() + "\n" +
+              "Use the same names for people already listed. Report a hearing, order or complaint that is already listed only if this document " +
+              "adds to it or changes it, and say so. Every finding must still come from the document's own text, with its quote and page; never " +
+              "copy anything from this background into a finding.\n\n";
+
     /// <summary>Total characters of real text: under ~25 means the document has nothing to analyse.</summary>
     public static int UsefulChars(IReadOnlyDictionary<int, string> pages) =>
         pages.Values.Sum(t => (t ?? "").Count(ch => !char.IsWhiteSpace(ch)));
@@ -192,7 +207,9 @@ public sealed class DocumentAnalyzer
         catList.Append("UNKNOWN: none of these clearly fits\n");
 
         var header = $"DOCUMENT TITLE: {doc.Title}\nFILE NAME: {doc.OriginalFileName}\nTODAY'S DATE: {_today():d MMMM yyyy}\n\n" +
-                     $"CANDIDATE CATEGORIES (choose categoryId from these keys only):\n{catList}\n";
+                     $"CANDIDATE CATEGORIES (choose categoryId from these keys only):\n{catList}\n" +
+                     // On a small local context the document's own text matters more: the background is cut down to fit
+                     CaseContextBlock(AnalysisSchema.Clip(_settings.CaseContext ?? "", Math.Max(600, Math.Min(2500, _settings.PartChars / 6))));
         int budget = Math.Min(_settings.PartChars - _settings.Prompt.Length - header.Length - 300, 12000);
         var parts = Split(pages, budget);
         result.PartsTotal = parts.Count;

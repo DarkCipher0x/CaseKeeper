@@ -212,6 +212,12 @@ public partial class MainWindow
             var days = Db.GetSetting("bin.days", "30");
             subtitle = $"Kept for {days} days, then removed for good. Right-click to restore";
         }
+        else if (_filterKey.StartsWith("family:", StringComparison.Ordinal))
+        {
+            list = list.Where(d => _setIds.Contains(d.Id));
+            title = _setTitle;
+            subtitle = "Every version, latest first. Right-click one to mark it as the latest";
+        }
         else if (_filterKey == "set")
         {
             list = list.Where(d => _setIds.Contains(d.Id));
@@ -256,9 +262,11 @@ public partial class MainWindow
                 .Contains(filter, StringComparison.OrdinalIgnoreCase));
 
         var items = list.ToList();
-        DocGrid.ItemsSource = items;
+        int folded = 0;
+        if (!deletedView) items = ArrangeDocuments(items, out folded);
+        ShowDocuments(items);
         DocListTitle.Text = title;
-        DocListSubtitle.Text = $"{items.Count} document(s)" + (subtitle.Length > 0 ? " · " + subtitle : "");
+        DocListSubtitle.Text = $"{items.Count} document(s)" + (folded > 0 ? $" · {folded} older version(s) folded in" : "") + (subtitle.Length > 0 ? " · " + subtitle : "");
         EmptyDocsPanel.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateDetailsPanel();
     }

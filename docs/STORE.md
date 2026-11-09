@@ -242,7 +242,19 @@ matters, but the app itself shows none.
   everything about the website version's in-app updater (*Check for updates*, *Download and verify*,
   installing, update sources, GitHub, signing keys) and the *For developers* notes. A Store listing
   that describes downloading and installing updates from outside the Store invites a policy 10.2.2
-  rejection, even though the Store copy can't do it. For 0.7.0, use:
+  rejection, even though the Store copy can't do it. For 0.8.0, use:
+
+  > - The Track sections fill themselves: what the AI finds in your documents is added to Case &
+  >   hearings, the Timeline, Directions & tasks, the Contact log, Complaints, Parties and the Scott
+  >   schedule, marked to check, and can be undone.
+  > - Case memory: what the AI knows about your case, kept in your library (encrypted if protected);
+  >   it learns from your decisions, and you can see and forget everything.
+  > - Ask about your case, with every answer linked to the page it came from.
+  > - Where your case stands, on the Dashboard.
+  > - Documents: the latest version of each document, most important first.
+  > - Reliability and security improvements.
+
+  For 0.7.0, the text was:
 
   > - Check my library: organise everything already in CaseKeeper in one go, with AI or without:
   >   categories, parties and contacts, hearings, the timeline, complaints and the Scott schedule.

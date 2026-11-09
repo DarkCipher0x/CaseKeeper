@@ -48,11 +48,16 @@ public static class FindingApprover
 
     public static bool NeedsCalculation(AiFinding f) => P(f, "needsCalculation") == "true";
 
-    private static string Provenance(Database db, AiFinding f)
+    /// <summary>Marks every record added automatically, so it's clear in each screen that it still needs checking.</summary>
+    public const string CheckMark = "From AI · check it against the document.";
+
+    private static string Provenance(Database db, AiFinding f, bool automatic = false)
     {
         var doc = db.GetDocument(f.DocumentId);
         var page = f.PageFrom is { } p ? $", page {p}" : "";
-        return $"From “{doc?.Title ?? "a document"}”{page}. Suggested by AI, checked and approved {DateTime.Now:d MMM yyyy}.";
+        return automatic
+            ? $"Added automatically from “{doc?.Title ?? "a document"}”{page} on {DateTime.Now:d MMM yyyy}. {CheckMark}"
+            : $"From “{doc?.Title ?? "a document"}”{page}. Suggested by AI, checked and approved {DateTime.Now:d MMM yyyy}.";
     }
 
     private static string Pick(string value, IEnumerable<string> allowed, string fallback)
@@ -169,9 +174,9 @@ public static class FindingApprover
     /// document said. Null for findings that are notes for review (conflicts, issues), which are resolved
     /// rather than turned into records.
     /// </summary>
-    public static object Draft(Database db, AiFinding f)
+    public static object Draft(Database db, AiFinding f, bool automatic = false)
     {
-        var provenance = Provenance(db, f);
+        var provenance = Provenance(db, f, automatic);
         switch (f.Kind)
         {
             case FindingKinds.Category:
@@ -590,20 +595,36 @@ public static class FindingApprover
 
         var what = record == null ? "Marked as resolved" : $"Created/updated {type} #{id}";
         db.Audit(automatic ? "ai.autoapply" : "ai.approve", "AI finding", f.Id,
-            automatic ? $"Applied AI category suggestion by rule: {f.Title}" : $"Approved AI suggestion ({f.KindText}): {AnalysisSchema.Clip(f.Title, 90)}",
-            $"AI-suggested, {(automatic ? "applied by the auto-apply rule the person switched on" : "approved by the user")}" +
+            automatic ? $"Added automatically by AI ({f.KindText}): {AnalysisSchema.Clip(f.Title, 90)}" : $"Approved AI suggestion ({f.KindText}): {AnalysisSchema.Clip(f.Title, 90)}",
+            $"AI-suggested, {(automatic ? "added automatically under the setting the person can switch off (Track auto-add), marked to check" : "approved by the user")}" +
             $"{(edited ? " after editing" : "")}.\n{what}.\nSource: document #{f.DocumentId}{(f.PageFrom is { } pg ? $", page {pg}" : "")}.\n" +
             $"Model: {f.Model} · prompt {f.PromptVersion} · schema {f.SchemaVersion} · confidence {f.Confidence.ToString("0.00", CultureInfo.InvariantCulture)}" +
             (string.IsNullOrWhiteSpace(note) ? "" : "\n" + note));
-        if (record is Complaint && !automatic) FileWithComplaint(db, f);
+        if (record is Complaint) FileWithComplaint(db, f, automatic);
+        // A category the person chose instead of the AI's is remembered for similar documents
+        if (!automatic && edited && f.Kind == FindingKinds.Category && record is CaseDocument chosen && PLong(f, "categoryId") != chosen.CategoryId)
+            try { CaseMemory.LearnCategory(db, chosen, chosen.CategoryId, f.Id, db.GetCategories().FirstOrDefault(c => c.Id == chosen.CategoryId)?.DisplayName ?? "that category"); }
+            catch (Exception ex) { AppLog.Warn("Review", "Couldn't remember the chosen category", ex); }
         return new ApprovalOutcome { Ok = true, RecordType = type, RecordId = id, Message = what };
+    }
+
+    /// <summary>The person has checked something the AI added automatically: it becomes an ordinary approval.</summary>
+    public static bool Confirm(Database db, AiFinding f)
+    {
+        if (f.StatusValue != FindingStatus.AutoApplied) return false;
+        f.StatusValue = FindingStatus.Approved;
+        f.DecidedAt = DateTime.Now;
+        db.SaveQuiet(f);
+        db.Audit("ai.confirm", "AI finding", f.Id, $"Checked something the AI added ({f.KindText}): {AnalysisSchema.Clip(f.Title, 90)}",
+            $"Record: {f.CreatedRecordType} #{f.CreatedRecordId}. Source: document #{f.DocumentId}.");
+        return true;
     }
 
     /// <summary>
     /// Approving a complaint also files its document under the complaint category suggested for it, when the document
     /// is still Uncategorised. Both decisions are in the audit trail, and each can be undone on its own.
     /// </summary>
-    private static void FileWithComplaint(Database db, AiFinding complaint)
+    private static void FileWithComplaint(Database db, AiFinding complaint, bool automatic)
     {
         try
         {
@@ -615,7 +636,8 @@ public static class FindingApprover
                 .FirstOrDefault(c => PLong(c, "categoryId") is { } cat && categories.FirstOrDefault(x => x.Id == cat) is { } category &&
                                      (category.GroupName == "Complaints & Representations" || category.Name.Contains("complaint", StringComparison.OrdinalIgnoreCase)));
             if (suggestion == null || Draft(db, suggestion) is not CaseDocument draft) return;
-            Approve(db, suggestion, draft, edited: false, note: "Approved together with the complaint from the same document.");
+            if (automatic) suggestion.AppliedByJobId = complaint.AppliedByJobId;
+            Approve(db, suggestion, draft, edited: false, automatic: automatic, note: "Approved together with the complaint from the same document.");
         }
         catch (Exception ex) { AppLog.Warn("Review", "Couldn't file the complaint's document under its category", ex); }
     }
@@ -624,6 +646,9 @@ public static class FindingApprover
     public static void Reject(Database db, AiFinding f)
     {
         if (!f.IsOpen) return;
+        // Remembered (kind, date and wording only), so the same suggestion isn't made again
+        try { CaseMemory.LearnRejection(db, f); }
+        catch (Exception ex) { AppLog.Warn("Review", "Couldn't remember the rejection", ex); }
         f.StatusValue = FindingStatus.Rejected;
         f.DecidedAt = DateTime.Now;
         f.Excerpt = "";
@@ -670,6 +695,9 @@ public static class FindingApprover
     /// Reverses an approval: removes the record it created (or puts back what it changed) through the
     /// normal database calls, and returns the suggestion to the review list.
     /// </summary>
+    /// <summary>Added to a suggestion the person undid: from then on it waits for them and is never added automatically.</summary>
+    public const string UndoneNote = "You undid this once, so it won't be added automatically again.";
+
     public static ApprovalOutcome Undo(Database db, AiFinding f)
     {
         if (f.StatusValue is not (FindingStatus.Approved or FindingStatus.AutoApplied))
@@ -768,13 +796,28 @@ public static class FindingApprover
                 }
             }
         }
+        var wasAutomatic = f.StatusValue == FindingStatus.AutoApplied;
         f.StatusValue = FindingStatus.Proposed;
         f.CreatedRecordType = "";
         f.CreatedRecordId = null;
         f.PreviousValue = "";
         f.DecidedAt = null;
+        f.AppliedByJobId = null;
+        // Undone once: it's the person's to decide from now on, so it's never added automatically again
+        const string undoneNote = UndoneNote;
+        if (wasAutomatic) CaseMemory.LearnRejection(db, f, CaseLearning.UndoneKind);   // remembered even if the document is read again
+        if (!(f.Warnings ?? "").Contains(undoneNote, StringComparison.Ordinal))
+            f.Warnings = string.Join("\n", new[] { f.Warnings, undoneNote }.Where(s => !string.IsNullOrWhiteSpace(s)));
         db.SaveQuiet(f);
-        db.Audit("ai.undo", "AI finding", f.Id, $"Undid approval of AI suggestion ({f.KindText})", $"Result: {removed}. Back in the review list.");
+        // The same thing found in other documents ("probably the same as") is undone with it, or the next check would add a copy
+        if (f.ConflictGroup.StartsWith("dup-", StringComparison.Ordinal))
+        {
+            var copies = db.Query<AiFinding>("ConflictGroup=$g AND Status=$s AND Id<>$i", ("$g", f.ConflictGroup), ("$s", (int)FindingStatus.Proposed), ("$i", f.Id))
+                .Where(c => !(c.Warnings ?? "").Contains(undoneNote, StringComparison.Ordinal)).ToList();
+            foreach (var c in copies) c.Warnings = string.Join("\n", new[] { c.Warnings, undoneNote }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            if (copies.Count > 0) db.SaveQuietBatch(copies);
+        }
+        db.Audit("ai.undo", "AI finding", f.Id, $"Undid {(wasAutomatic ? "something the AI added" : "approval of AI suggestion")} ({f.KindText})", $"Result: {removed}. Back in the review list.");
         return new ApprovalOutcome { Ok = true, Message = removed };
     }
 }

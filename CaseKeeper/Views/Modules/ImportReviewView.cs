@@ -77,7 +77,7 @@ public partial class ImportReviewView : UserControl
             new Section("low", "Low confidence", f => f.IsOpen && f.Confidence < BulkThresholds.Medium),
             new Section("failed", "Failed or not analysed", _ => false),
             new Section("approved", "Approved", f => f.StatusValue == FindingStatus.Approved),
-            new Section("auto", "Applied by AI rule", f => f.StatusValue == FindingStatus.AutoApplied),
+            new Section("auto", "Added by AI – to check", f => f.StatusValue == FindingStatus.AutoApplied),
             new Section("deferred", "Deferred", f => f.StatusValue == FindingStatus.Deferred),
             new Section("rejected", "Rejected", f => f.StatusValue == FindingStatus.Rejected)
         };
@@ -92,7 +92,8 @@ public partial class ImportReviewView : UserControl
         var left = new DockPanel();
         var head = new StackPanel();
         head.Children.Add(Ui.Text("Import review", "H1"));
-        head.Children.Add(Ui.Muted("AI suggestions wait here. Nothing reaches your case until you approve it.", 12));
+        head.Children.Add(Ui.Muted("What the AI found. Confident finds are added to your case straight away and listed under “Added by AI – to check” " +
+                                   "(switch this off in Review options); everything else waits here until you approve it.", 12));
         var start = Ui.Button("Import a folder…", "", (_, _) => Shell.OpenBulkImport(), primary: true);
         start.Margin = new Thickness(0, 10, 0, 4);
         start.HorizontalAlignment = HorizontalAlignment.Left;
@@ -269,13 +270,24 @@ public partial class ImportReviewView : UserControl
             "details" => "The document's own date, author and a short summary, as the AI read them.",
             "conflicts" => "Found by comparing documents. Nothing has been changed – compare the sources and decide.",
             "low" => "The AI wasn't sure about these. Check each one carefully against the document.",
-            "approved" or "auto" => "Already added to your case. Undo removes what was added and puts the suggestion back.",
+            "approved" => "Already added to your case. Undo removes what was added and puts the suggestion back.",
+            "auto" => "Added to your case automatically and marked “From AI · check”. Open each one's document, then Mark checked. " +
+                      "Undo removes what was added; it won't be added automatically again.",
             "rejected" or "deferred" => "Use Reconsider to put one back in the review list.",
             _ => "Check each against the document before approving. Allegations are shown as what someone says, never as fact."
         };
         if (_current is "categories" or "unknown" or "low")
             _bulkBar.Children.Add(Ui.Button("Approve selected categories", "", (_, _) => ApproveSelectedCategories(), primary: _current == "categories",
                 tooltip: "Files each selected document under its suggested category (medium or high confidence only)"));
+        if (def.Key == "auto")
+        {
+            _bulkBar.Children.Add(Ui.Button("Mark selected as checked", "", (_, _) => ConfirmSelected(), primary: true,
+                tooltip: "You've checked these against their documents: they become ordinary approved records"));
+            _bulkBar.Children.Add(Ui.Button("Undo selected", "", (_, _) => UndoSelected(), tooltip: "Removes what each one added"));
+            if (TrackAutoAdd.LastRun(Db) is { } run)
+                _bulkBar.Children.Add(Ui.Button("Undo everything from the last run…", "", (_, _) => UndoRun(run),
+                    tooltip: "Removes everything the last import or library check added automatically"));
+        }
         if (def.Key is not ("approved" or "auto" or "rejected"))
         {
             _bulkBar.Children.Add(Ui.Button("Reject selected", "", (_, _) => RejectSelected()));
@@ -319,6 +331,14 @@ public partial class ImportReviewView : UserControl
         _subtitle.Text = open > 0 ? $"{open:N0} suggestion(s) to check." : "Nothing waiting for review.";
         var sp = new StackPanel();
         if (LibraryCheckCard() is { } card) sp.Children.Add(card);
+        int toCheck = _all.Count(f => f.StatusValue == FindingStatus.AutoApplied);
+        if (toCheck > 0)
+        {
+            var row = new WrapPanel { Margin = new Thickness(0, 0, 0, 10) };
+            row.Children.Add(Ui.Button($"Added by AI – to check: {toCheck:N0}", "", (_, _) => Go("auto"), primary: true,
+                tooltip: "Already in your case, marked “From AI · check”. Check each against its document."));
+            sp.Children.Add(row);
+        }
         var counts = new WrapPanel();
         foreach (var def in _defs.Where(d => d.Key is not ("summary" or "approved" or "auto" or "rejected" or "deferred")))
         {
@@ -391,6 +411,8 @@ public partial class ImportReviewView : UserControl
             var b = Ui.Button($"{text}: {n:N0}", null, (_, _) => Go(key));
             lines.Children.Add(b);
         }
+        int added = _all.Count(f => f.StatusValue == FindingStatus.AutoApplied && f.AppliedByJobId == job.Id);
+        Line("Added to your case (to check)", added, "auto");
         Line("Categories to check", Open(FindingKinds.Category), "categories");
         Line("Parties & children", Open(FindingKinds.Party, FindingKinds.Child), "people");
         Line("Hearings", Open(FindingKinds.Hearing), "hearings");
@@ -405,6 +427,9 @@ public partial class ImportReviewView : UserControl
         sp.Children.Add(lines);
         var actions = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
         actions.Children.Add(Ui.Button("Open the Case map", "\uE81E", (_, _) => Shell.GoTo("casemap")));
+        actions.Children.Add(Ui.Button("What CaseKeeper knows", "", (_, _) => Shell.GoTo("memory"), tooltip: "The case memory the AI reads"));
+        if (added > 0 && !running)
+            actions.Children.Add(Ui.Button("Undo what this check added…", "", (_, _) => UndoRun(job.Id)));
         if (AiService.Enabled)
             actions.Children.Add(Ui.Button(CaseOverview.Latest(Db) == null ? "Write case overview" : "Refresh case overview", "\uE945", (_, _) => _ = Shell.WriteCaseOverviewAsync()));
         sp.Children.Add(actions);
@@ -447,7 +472,7 @@ public partial class ImportReviewView : UserControl
         return Ui.Card(sp, new Thickness(0, 0, 0, 10));
     }
 
-    private void Go(string key)
+    public void Go(string key)
     {
         _current = key;
         if (_sections.ItemsSource is IEnumerable<SectionItem> items) _sections.SelectedItem = items.FirstOrDefault(i => i.Key == key);
@@ -847,8 +872,46 @@ public partial class ImportReviewView : UserControl
         AfterChange();
     }
 
+    private void ConfirmSelected()
+    {
+        var sel = Selected().Where(f => f.StatusValue == FindingStatus.AutoApplied).ToList();
+        if (sel.Count == 0) return;
+        if (sel.Count > 1 && MessageBox.Show(Ui.Owner(this), $"Mark {sel.Count} entries as checked?\n\nOnly do this once you've compared each with its document.",
+                "Mark as checked", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        foreach (var f in sel)
+            try { FindingApprover.Confirm(Db, f); }
+            catch (Exception ex) { AppLog.Warn("Review", $"Couldn't mark finding #{f.Id} as checked", ex); }
+        AfterChange();
+    }
+
+    private void UndoSelected()
+    {
+        var sel = Selected().Where(f => f.StatusValue is FindingStatus.AutoApplied or FindingStatus.Approved).ToList();
+        if (sel.Count == 0) return;
+        if (MessageBox.Show(Ui.Owner(this), $"Undo {sel.Count} entr{(sel.Count == 1 ? "y" : "ies")}?\n\nThis removes what each one added to your case, including any " +
+                                            "changes you've made to it since. They go back in the review list and won't be added automatically again.", "Undo",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        foreach (var f in sel.OrderByDescending(f => f.DecidedAt))
+            try { FindingApprover.Undo(Db, f); }
+            catch (Exception ex) { AppLog.Warn("Review", $"Couldn't undo finding #{f.Id}", ex); }
+        AfterChange();
+    }
+
+    private void UndoRun(long jobId)
+    {
+        int n = Db.Query<AiFinding>("Status=$s AND AppliedByJobId=$j", ("$s", (int)FindingStatus.AutoApplied), ("$j", jobId)).Count;
+        if (n == 0) { MessageBox.Show(Ui.Owner(this), "Nothing from that run is still waiting to be checked.", "Undo"); return; }
+        if (MessageBox.Show(Ui.Owner(this), $"Undo the {n} thing(s) that run added to your case?\n\nEntries you've already marked as checked are kept. " +
+                                            "The rest are removed and go back in the review list.", "Undo the run",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        TrackAutoAdd.UndoRun(Db, jobId);
+        AfterChange();
+    }
+
     private void AfterChange()
     {
+        try { CaseMemory.Rebuild(Db); }
+        catch (Exception ex) { AppLog.Warn("Review", "Couldn't update the case memory", ex); }
         Shell.RefreshAll();
         Shell.RefreshTimelineAndDashboard();
         Reload();
@@ -992,7 +1055,7 @@ public class ReviewOptionsWindow : FormDialog
     private static Data.Database Db => App.Library.Db;
     private readonly TextBox _high, _medium, _autoThreshold, _maxParts;
     private readonly ComboBox _preset, _depth, _model, _workers, _bulkProvider, _cloudModel, _cloudEffort;
-    private readonly CheckBox _auto;
+    private readonly CheckBox _auto, _trackAuto;
     private readonly TextBlock _pc, _pcNote;
     private readonly Button _download;
     private List<(string Name, long Size)> _installed = new();
@@ -1073,15 +1136,24 @@ public class ReviewOptionsWindow : FormDialog
                    "(runs out of memory, or answers take too long), CaseKeeper eases off by itself – fewer at once, smaller parts, a lighter model – and tells you.");
         _maxParts = Add("Longest document read in full (parts of a few pages each)", Box(Db.GetSetting("bulk.maxParts", "40")));
 
-        Fields.Children.Add(new TextBlock { Text = "ADVANCED", Style = Ui.Style("Label"), Margin = new Thickness(0, 18, 0, 4) });
+        Fields.Children.Add(new TextBlock { Text = "AUTOMATIC", Style = Ui.Style("Label"), Margin = new Thickness(0, 18, 0, 4) });
+        _trackAuto = new CheckBox
+        {
+            Content = "Add what's found to the case straight away, marked to check (Track auto-add)",
+            IsChecked = TrackAutoAdd.Enabled(Db)
+        };
+        Fields.Children.Add(_trackAuto);
+        AddHint("On: hearings, orders, directions, timeline entries, contact, complaints, parties, Scott schedule items, categories and " +
+                "document details go straight into your case when the AI is at least medium confidence, there are no warnings or conflicts, " +
+                "and nothing like it is there already. Each is marked “From AI · check” and listed under “Added by AI – to check”, where you " +
+                "can mark it checked or undo it (or undo a whole run). Everything else waits here for you. Off: everything waits for you.");
         _auto = new CheckBox
         {
-            Content = "Automatically file documents under the AI's category when it is very confident (advanced)",
+            Content = "When that's off: still file documents under the AI's category when it is very confident",
             IsChecked = Db.GetSetting("bulk.autoApply", "0") == "1"
         };
         Fields.Children.Add(_auto);
-        AddHint("Off unless you turn it on. Only ever changes the category of a document that's still in Uncategorised; never adds hearings, " +
-                "dates, deadlines or any other record. Every change is in the audit trail, listed under “Applied by AI rule”, and can be undone.");
+        AddHint("Only changes the category of a document that's still in Uncategorised. Every change is in the audit trail and can be undone.");
         _autoThreshold = Add("Only when confidence is at least", Box(Db.GetSetting("bulk.autoApplyThreshold", "0.95")));
 
         Loaded += async (_, _) => await ProbeAsync();
@@ -1202,7 +1274,7 @@ public class ReviewOptionsWindow : FormDialog
         if (_rec != null && workers > _rec.Workers && workers != (int.TryParse(Db.GetSetting("bulk.aiWorkers", ""), out var was) ? was : 0) &&
             MessageBox.Show(this, $"This PC is recommended to read {_rec.Workers} at once. Reading {workers} at once may be slower, or run out of memory.\n\nUse {workers} anyway?", Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return false;
-        bool autoOn = _auto.IsChecked == true;
+        bool autoOn = _auto.IsChecked == true, trackOn = _trackAuto.IsChecked == true;
         if (autoOn && Db.GetSetting("bulk.autoApply", "0") != "1" &&
             MessageBox.Show(this, "Turn on automatic filing?\n\nDocuments still in Uncategorised will be filed under the AI's category without asking, " +
                                   "when it is at least this confident. You can undo each one in Import review.", Title,
@@ -1233,12 +1305,13 @@ public class ReviewOptionsWindow : FormDialog
         Db.SetSetting("bulk.aiWorkers", workers == 0 ? "" : workers.ToString(CultureInfo.InvariantCulture));
         Db.SetSetting("bulk.maxParts", parts.ToString(CultureInfo.InvariantCulture));
         Db.SetSetting("bulk.autoApply", autoOn ? "1" : "0");
+        Db.SetSetting(TrackAutoAdd.Setting, trackOn ? "1" : "0");
         Db.SetSetting("bulk.autoApplyThreshold", auto.ToString("0.00", CultureInfo.InvariantCulture));
         Db.Audit("settings.change", "settings", null, "Changed Import review options",
             $"AI service {(bulkProvider.Length > 0 ? bulkProvider : "as Settings")}{(cloudModel.Length > 0 ? $" ({cloudModel})" : "")}{(cloudEffort.Length > 0 ? $", effort {cloudEffort}" : "")}, " +
             $"high from {high:0.00}, medium from {medium:0.00}, speed {preset}, reading {depth}, model {(model.Length > 0 ? model : "automatic")}, " +
             $"AI reads {(workers == 0 ? "automatic" : workers.ToString(CultureInfo.InvariantCulture))} at once, up to {parts} parts, " +
-            $"auto-apply {(autoOn ? $"on at {auto:0.00}" : "off")}");
+            $"auto-apply {(autoOn ? $"on at {auto:0.00}" : "off")}, add to case automatically {(trackOn ? "on" : "off")}");
         if (MainWindow.Shell.Bulk is { IsRunning: false } bulk) bulk.AiWorkers = AiService.BulkWorkers();
         return true;
     }
