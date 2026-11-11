@@ -56,7 +56,7 @@
 
   <ItemGroup>
     <!-- Optional cloud AI: Claude (Anthropic API and Microsoft Foundry, Apache-2.0) and OpenAI (MIT). -->
-    <PackageReference Include="Anthropic" Version="13.6.0" />
+    <PackageReference Include="Anthropic" Version="13.8.0" />
     <PackageReference Include="Anthropic.Foundry" Version="1.0.0" />
     <!-- ML-DSA-65 (post-quantum) verification of signed updates, the same as DarkCipher ServerManagement. MIT licence. -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
