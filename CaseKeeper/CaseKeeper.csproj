@@ -65,7 +65,7 @@
     <PackageReference Include="OpenAI" Version="2.15.0" />
     <!-- Security pins: the AI libraries above were built against older versions of these. Pinning the newest
          stable releases keeps the sign-in and HTTP code they share patched (CaseKeeper only ever uses key sign-in). -->
-    <PackageReference Include="Azure.Core" Version="1.64.0" />
+    <PackageReference Include="Azure.Core" Version="1.65.0" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.92.0" />
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.92.0" />
