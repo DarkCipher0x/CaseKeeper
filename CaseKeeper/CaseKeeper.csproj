@@ -61,7 +61,7 @@
     <!-- ML-DSA-65 (post-quantum) verification of signed updates, the same as DarkCipher ServerManagement. MIT licence. -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
-    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="11.0.0" />
     <PackageReference Include="OpenAI" Version="2.15.0" />
     <!-- Security pins: the AI libraries above were built against older versions of these. Pinning the newest
          stable releases keeps the sign-in and HTTP code they share patched (CaseKeeper only ever uses key sign-in). -->
